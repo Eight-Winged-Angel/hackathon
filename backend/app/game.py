@@ -374,11 +374,11 @@ class Game:
     def get_text_transcript(self):
         transcript_info = {'name', 'transcript', 'emotion', 'round_number'}
         round_number = -1
-        transcript = ''
+        transcript = 'TRANSCRIPT START\n'
         for clip in self.audio_clips:
             if clip['round_number'] != round_number:
                 round_number = clip['round_number']
-                transcript += f'Round {round_number} begins:'
+                transcript += f'Round {round_number} begins: \n'
             transcript += f'{clip["name"]}: {clip["transcript"]} (Emotion: {clip["emotion"]})\n'
         transcript += 'TRANSCRIPT END\n'
         return transcript
@@ -421,7 +421,6 @@ ROLE_SUMMARIES: Dict[str, str] = {
 
 AUDIO_STORAGE_DIR = Path(__file__).resolve().parent.parent / "data" / "audio"
 AUDIO_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-
 
 AI_PHRASES = [
     "The moon feels restless; someone is hiding long teeth.",

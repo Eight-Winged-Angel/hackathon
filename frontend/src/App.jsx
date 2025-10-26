@@ -1466,9 +1466,9 @@ export default function App() {
               </div>
             ))}
         </div>
-        <p style={{ marginTop: "0.5rem", color: "#64748b" }}>
+        {/* <p style={{ marginTop: "0.5rem", color: "#64748b" }}>
           Audio clips live under <code>backend/data/audio</code>; swap in your own speech-to-text engine later.
-        </p>
+        </p> */}  
       </div>
     );
   };

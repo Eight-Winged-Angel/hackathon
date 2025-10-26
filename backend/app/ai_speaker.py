@@ -288,6 +288,20 @@ def silence_filter(s, silence_limit=2000):
         return True
     return any([e - s > silence_limit for s, e in detect_silence(seg, min_silence_len=500, silence_thresh=-40)])
 
+# def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
+#     messages = [
+#             {"role":"system","content":"You are a helpful assistant."},
+#             {"role":"user","content":[to_audio(audio)]},
+#         ]
+#     resp = client.chat.completions.create(
+#         model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
+#         messages=messages,
+#         max_tokens=max_tokens,
+#         temperature=temperature,
+#         top_p=top_p,
+#         stream=False,
+#     )   
+#     return process_resp(resp)
 
 def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
     messages = [
@@ -298,7 +312,7 @@ def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
             ]},
         ]
     resp = client.chat.completions.create(
-        model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
+        model="higgs-audio-understanding-Hackathon",
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
@@ -316,7 +330,7 @@ def plan_and_speak(player, game, out_name="out.wav"):
     prompt = f'''Generate speech based on the provided sample and transcript. 
     
     <|scene_desc_start|>The audio is recorded in a quiet room with no noise. The speech is clearly audible and loud. {plan.get("expression_instruction", "")} <|scene_desc_end|>'''
-    for _ in range(3):
+    for i in range(3):
         generate_audio(transcript = plan['content'], 
                        system_prompt=prompt,
                     additional_messages=extract_samples(n_samples=3, 
@@ -325,6 +339,7 @@ def plan_and_speak(player, game, out_name="out.wav"):
                                                         emotion=plan['emotion'],
                                                         ),
                     out_name=out_name)
+        print(f'GENERATION {i}')
         if not silence_filter(out_name):
             break
     
@@ -338,6 +353,24 @@ def plan_and_speak(player, game, out_name="out.wav"):
     # )
     return plan
 
+# def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
+#     print('SEMANTIC AUDIO', audio)
+#     messages = [
+#             {"role":"system","content":"You are a helpful assistant."},
+#             {"role":"user","content":[
+#                 {"type":"audio_url","audio_url": {"url":upload_temp(audio)}},
+#                 {"type":"text","text":f"Write a short description about the emotional information in the audio."}
+#             ]},
+#         ]
+#     resp = client.chat.completions.create(
+#         model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
+#         messages=messages,
+#         max_tokens=max_tokens,
+#         temperature=temperature,
+#         top_p=top_p,
+#         stream=False,
+#     )   
+#     return process_resp(resp)
 def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
     print('SEMANTIC AUDIO', audio)
     messages = [
@@ -348,7 +381,7 @@ def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=
             ]},
         ]
     resp = client.chat.completions.create(
-        model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
+        model="higgs-audio-understanding-Hackathon",
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
