@@ -9,8 +9,9 @@ from uuid import uuid4
 # =============================
 # API 配置
 # =============================
+API_KEY = os.getenv('BOSON_API_KEY')
 client = openai.Client(
-    api_key="bai-0tS-NIHC8A04XHOSbU7Z6qzF_tZHZyl-4l67jy5MdqBsawIj",
+    api_key=API_KEY,
     base_url="https://hackathon.boson.ai/v1"
 )
 
