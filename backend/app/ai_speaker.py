@@ -334,3 +334,22 @@ def plan_and_speak(player, game, out_name="out.wav"):
     #     out_name=out_name
     # )
     return plan
+
+def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
+    print('SEMANTIC AUDIO', audio)
+    messages = [
+            {"role":"system","content":"You are a helpful assistant."},
+            {"role":"user","content":[
+                {"type":"audio_url","audio_url": {"url":upload_temp(audio)}},
+                {"type":"text","text":f"Write a short description about the emotional information in the audio."}
+            ]},
+        ]
+    resp = client.chat.completions.create(
+        model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        stream=False,
+    )   
+    return process_resp(resp)
