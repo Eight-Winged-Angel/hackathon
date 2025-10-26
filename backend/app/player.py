@@ -3,19 +3,19 @@ from __future__ import annotations
 import random
 import uuid
 from typing import Any, List, Optional, TYPE_CHECKING
-
+from backend.app.utils import text_completion
 # Only import Game for type checking to avoid circular imports at runtime
 if TYPE_CHECKING:
     from backend.app.game import Game
 
-
 # Lightweight local stub for LLM calls used by AIAgent.
 def chat_completion(messages: List[dict], max_tokens: int = 80, temperature: float = 0.7, model: Optional[str] = None) -> str:
     # Deterministic short response based on last content; avoids network dependency.
-    last = next((m.get("content", "") for m in reversed(messages) if isinstance(m, dict)), "")
-    words = [w for w in (last or "").split()]
-    return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
-
+    print('RUNNING CHAT COMPLETION', messages)
+    # last = next((m.get("content", "") for m in reversed(messages) if isinstance(m, dict)), "")
+    # words = [w for w in (last or "").split()]
+    # return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
+    return text_completion(messages)
 
 class AIAgent:
     """Lightweight agent bound to an AIPlayer.
@@ -94,6 +94,10 @@ class AIAgent:
             return "\n".join(lines)
         except Exception:
             return ""
+
+    def get_relevant_info(self, game):
+        events_text = self._event_log_excerpt(game) if game else ""
+        return self.system_prompt(), self.role_instructions(), events_text
 
     def discuss(self, game: Optional["Game"] = None) -> str:
         """Generate a discussion statement (uses game.events as context if provided)."""
@@ -216,7 +220,6 @@ class AIPlayer(Player):
         if not candidates:
             return None
         try:
-            self.agent.update_reason(game)
             pick = self.agent.night_action(game, candidates)
             if pick in candidates:
                 return pick
@@ -244,13 +247,12 @@ class AIPlayer(Player):
         
         # Build history context from recent events
         try:
-            events_text = "\n".join(e.get("text", "") for e in (game.events or [])[-10:])
+            events_text = "\n".join(e.get("text", "") for e in (game.events or []))
         except Exception:
             events_text = ""
 
         # Use agent prompts and scratch reasoning
         try:
-            self.agent.update_reason(game)
             system_prompt = self.agent.system_prompt()
             role_instructions = self.agent.role_instructions()
             reasoning = getattr(self.agent, "reason", "") or ""
@@ -263,18 +265,18 @@ class AIPlayer(Player):
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the hitorical events"},
+                {"role": "system", "content": "The followings are all the historical events"},
                 {"role": "system", "content": events_text},
                 {"role": "system", "content": f"{self.known_allies} are your mafia team mates."},
-                {"role": "user", "content": f"Now using the above info, say the following to other players to deceive them with your reasoning {reasoning}"},
+                {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
             ]
         else:
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the hitorical events"},
+                {"role": "system", "content": "The followings are all the historical events"},
                 {"role": "system", "content": events_text},
-                {"role": "user", "content": f"Now eloquently express your reasoning on who are the mafias with your thinking: {reasoning}"},
+                {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
             ]
 
         try:

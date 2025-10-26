@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from backend.app.player import Player, HumanPlayer, AIPlayer
 
 #ADD: ai speaker
-from backend.app.ai_speaker import plan_and_speak
+from backend.app.ai_speaker import plan_and_speak, asr
 
 
 def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int = 30) -> str:
@@ -547,14 +547,26 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
     transcript_text = "..."
     try:
         history_text = _compose_game_history(game, max_events=40, max_chats=30)
+<<<<<<< HEAD
         game.last_history_text = history_text  # <<< 记录历史
 
         plan = plan_and_speak(history_text, out_name=str(file_path))
+=======
+        # 这里会把音频直接写入 file_path
+        print(ai_player)
+        plan = plan_and_speak(*ai_player.agent.get_relevant_info(game), out_name=str(file_path))
+>>>>>>> 7f86eedf75fe3798b4c897f45eca6446a7074065
         transcript_text = str(plan.get("content", "")).strip() or "..."
         game.last_think_output = str(plan.get("_raw_model_output", "")) or "(empty)"  # <<< 记录 think 原始输出
     except Exception as e:
+<<<<<<< HEAD
         game.last_think_output = f"(TTS/plan failed: {e})"
         # 兜底：100ms 静音，避免前端报错
+=======
+        # 兜底：失败时写一个极短的空WAV（不理想，但不会让前端炸掉）
+        print(e)
+        transcript_text = "(TTS failed; empty audio fallback)"
+>>>>>>> 7f86eedf75fe3798b4c897f45eca6446a7074065
         try:
             with wave.open(str(file_path), "wb") as wf:
                 wf.setnchannels(1)
@@ -1171,7 +1183,7 @@ def get_player_assignment(game_id: str, player_id: str) -> PlayerSessionResponse
 async def save_audio_from_server(game_id: str, player_id: str, file: UploadFile) -> AudioUploadResponse:
     game = _get_game_or_404(game_id)
     player = _get_player(game, player_id)
-
+    print('SAVING AUDIO FOR PLAYER', player)
     data = await file.read()
 
     if not data:
@@ -1200,7 +1212,7 @@ async def save_audio_from_server(game_id: str, player_id: str, file: UploadFile)
     file_path = audio_dir / filename
     file_path.write_bytes(data)
 
-    transcript = _mock_transcribe_audio(player, clip_id, data)
+    transcript = asr(file_path)
     metadata = {
         "clipId": clip_id,
         "playerId": player.id,
