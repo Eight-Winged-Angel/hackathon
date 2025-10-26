@@ -554,7 +554,7 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
 
         # 这里会把音频直接写入 file_path
         print(ai_player)
-        plan = plan_and_speak(*ai_player.agent.get_relevant_info(game), out_name=str(file_path))
+        # plan = plan_and_speak(*ai_player.agent.get_relevant_info(game), out_name=str(file_path))
 
         transcript_text = str(plan.get("content", "")).strip() or "..."
         game.last_think_output = str(plan.get("_raw_model_output", "")) or "(empty)"  # <<< 记录 think 原始输出
@@ -924,9 +924,7 @@ def trigger_speech(
     if game.status == "waiting":
         raise HTTPException(status_code=400, detail="Start the game before cueing speech.")
 
-    current_speaker_id = speaker_player_id or (
-        game.current_turn_player_id if game.workflow_stage == "discussion" else None
-    )
+    current_speaker_id = speaker_player_id
     if not current_speaker_id:
         raise HTTPException(status_code=400, detail="No speaker is currently active.")
 

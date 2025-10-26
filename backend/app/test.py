@@ -31,7 +31,7 @@ Player 2 (suspicious): “Could be 3 pretending to be nervous. I want answers.�
 Player 3 (cornered): “Why me again? If I were wolf I’d push someone harder.”  
 Player 4 (tense): “Player 8 still low participation = suspicious.”  
 Player 5 (angry): “Stop making me the easy target! Look at Player 2’s quiet manipulation.”  
-Player 6 (me)(observant): 
+Player 6 (me)(surprised): 
 """
 
 print("=== TEST: Thinking only ===")

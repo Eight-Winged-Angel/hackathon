@@ -16,7 +16,7 @@ client = openai.Client(
 
 THINK_MODEL = "Qwen3-32B-Thinking-Hackathon"
 
-ALLOWED_EMOTIONS = {"neutral","calm","happy","sad","angry","fearful","disgust"}
+ALLOWED_EMOTIONS = {"neutral","calm","happy","sad","angry","fearful","disgust","surprised"}
 
 
 
@@ -175,7 +175,43 @@ def process_resp(resp):
     resp = resp.choices[0].message.content
     return re.findall(r'(?:<think>.*</think>)*\n*(.+)', resp, re.DOTALL)[0]
 def save_audio(resp, out_name='output.wav'):
-    (f := open(out_name, "wb")).write(base64.b64decode(resp.choices[0].message.audio.data))
+    """
+    优先按常见字段 message.audio.data(base64) 写文件；
+    失败则退回通用提取器 _extract_audio_bytes(resp)。
+    """
+    try:
+        b64data = resp.choices[0].message.audio.data  # 可能不存在
+        with open(out_name, "wb") as f:
+            f.write(base64.b64decode(b64data))
+        return
+    except Exception:
+        # 走通用提取（兼容 content 列表里带 {"type":"output_audio","audio":{"data":...}} 的返回）
+        audio_bytes = _extract_audio_bytes(resp)
+        with open(out_name, "wb") as f:
+            f.write(audio_bytes)
+        return
+
+
+def _fallback_save_audio_bytes(resp, out_name='output.wav'):
+    """
+    你在 except 分支里调用了这个函数，但原文件中并未定义，导致 NameError。
+    这里做一个“最后兜底”：尽力从各种位置取音频。
+    """
+    try:
+        audio_bytes = _extract_audio_bytes(resp)
+        with open(out_name, "wb") as f:
+            f.write(audio_bytes)
+        return
+    except Exception:
+        # 真的不行再尝试 base64 → bytes 的最后一次尝试
+        try:
+            b64data = resp.choices[0].message.audio.data
+            with open(out_name, "wb") as f:
+                f.write(base64.b64decode(b64data))
+            return
+        except Exception as e:
+            # 抛回去让上层走空音频兜底
+            raise e
 
 import requests
 import time
