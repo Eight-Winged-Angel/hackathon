@@ -16,6 +16,8 @@ __pycache__/
 !.vscode/launch.json  # Debugger
 .idea/
 
+data/
+
 node_modules/
 
 # OS junk
