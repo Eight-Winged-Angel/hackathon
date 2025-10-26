@@ -34,7 +34,14 @@ from backend.app.game import (
     submit_vote,
     trigger_speech,
     wolf_vote,
+    get_debug_info,
+    set_debug_enabled,
+    DebugInfo,
 )
+
+class ToggleDebugRequest(BaseModel):
+    playerId: str
+    enabled: bool
 
 
 class CreateGameRequest(BaseModel):

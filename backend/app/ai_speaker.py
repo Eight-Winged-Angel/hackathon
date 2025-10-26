@@ -365,6 +365,9 @@ def plan_and_speak(system_prompt, role_instructions, game_history: str, out_name
         expression_instruction=plan.get("expression_instruction",""),
         out_name=out_name
     )
+<<<<<<< HEAD
+    return plan
+=======
     return plan
 
 def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
@@ -384,3 +387,4 @@ def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
         stream=False,
     )   
     return process_resp(resp)
+>>>>>>> 7f86eedf75fe3798b4c897f45eca6446a7074065
