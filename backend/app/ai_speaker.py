@@ -16,7 +16,7 @@ client = openai.Client(
 
 THINK_MODEL = "Qwen3-32B-Thinking-Hackathon"
 
-ALLOWED_EMOTIONS = {"neutral","calm","happy","sad","angry","fearful","disgust"}
+ALLOWED_EMOTIONS = {"neutral","calm","happy","sad","angry","fearful","disgust","surprised"}
 
 
 
@@ -176,7 +176,43 @@ def process_resp(resp):
     resp = resp.choices[0].message.content
     return re.findall(r'(?:<think>.*</think>)*\n*(.+)', resp, re.DOTALL)[0]
 def save_audio(resp, out_name='output.wav'):
-    (f := open(out_name, "wb")).write(base64.b64decode(resp.choices[0].message.audio.data))
+    """
+    优先按常见字段 message.audio.data(base64) 写文件；
+    失败则退回通用提取器 _extract_audio_bytes(resp)。
+    """
+    try:
+        b64data = resp.choices[0].message.audio.data  # 可能不存在
+        with open(out_name, "wb") as f:
+            f.write(base64.b64decode(b64data))
+        return
+    except Exception:
+        # 走通用提取（兼容 content 列表里带 {"type":"output_audio","audio":{"data":...}} 的返回）
+        audio_bytes = _extract_audio_bytes(resp)
+        with open(out_name, "wb") as f:
+            f.write(audio_bytes)
+        return
+
+
+def _fallback_save_audio_bytes(resp, out_name='output.wav'):
+    """
+    你在 except 分支里调用了这个函数，但原文件中并未定义，导致 NameError。
+    这里做一个“最后兜底”：尽力从各种位置取音频。
+    """
+    try:
+        audio_bytes = _extract_audio_bytes(resp)
+        with open(out_name, "wb") as f:
+            f.write(audio_bytes)
+        return
+    except Exception:
+        # 真的不行再尝试 base64 → bytes 的最后一次尝试
+        try:
+            b64data = resp.choices[0].message.audio.data
+            with open(out_name, "wb") as f:
+                f.write(base64.b64decode(b64data))
+            return
+        except Exception as e:
+            # 抛回去让上层走空音频兜底
+            raise e
 
 import requests
 import time
@@ -252,141 +288,6 @@ def silence_filter(s, silence_limit=2000):
     else:
         return True
     return any([e - s > silence_limit for s, e in detect_silence(seg, min_silence_len=500, silence_thresh=-40)])
-
-# def generate_emotion(
-#     transcript,
-#     emotion='happy',
-#     actor=4,
-#     intensity=1,
-#     expression_instruction="",
-#     out_name='out.wav',
-#     max_retry=3
-# ):
-#     """
-#     生成音频 → 用 silence_filter 质检 → 不合格则最多重试 max_retry 次。
-#     已接入 expression_instruction 来细化表达（语速/语调/停顿/能量/姿态）。
-#     """
-#     global df_total, emotions, statements, to_audio, save_audio
-
-#     # calm-1 fallback：不产出 calm-1
-#     if (emotion == 'calm' and int(intensity) == 1):
-#         emotion = 'neutral'
-#         intensity = 1
-
-#     # Few-shot 样本（可为空，零样本降级）
-#     samples = []
-#     try:
-#         subset = df_total[
-#             (df_total.emotion == emotions.index(emotion) + 1)
-#             & (df_total.intensity == int(intensity))
-#             & (df_total.actor == int(actor))
-#         ]
-#         for (_, a) in subset.iterrows():
-#             samples += [
-#                 {"role": "user", "content": statements[a.statement - 1]},
-#                 {"role": "assistant", "content": [to_audio(a.f, vol_boost=5)]},
-#             ]
-#     except Exception:
-#         samples = []
-
-#     # 将 expression_instruction 转成更明确的表演提示（可按需扩展）
-#     def _style_hint_from_expression(expr: str) -> str:
-#         e = (expr or "").lower().strip()
-#         # 轻量映射：把常见词转成更具体的演绎指令
-#         rules = []
-#         if any(k in e for k in ["assertive", "confident", "坚定", "果断", "强势"]):
-#             rules += ["tighter phrasing", "shorter pauses", "firm tone", "reduced upspeak"]
-#         if any(k in e for k in ["defensive", "防御", "被动", "解释"]):
-#             rules += ["slightly faster onset", "narrow pitch range", "controlled energy"]
-#         if any(k in e for k in ["sarcastic", "讽刺", "嘲讽", "轻蔑"]):
-#             rules += ["slight drawl", "downward inflection", "subtle scoff timbre"]
-#         if any(k in e for k in ["provocative", "挑衅"]):
-#             rules += ["higher projection", "sharper onsets", "brisk tempo"]
-#         if any(k in e for k in ["hesitant", "犹豫"]):
-#             rules += ["longer micro-pauses", "softer onset", "slower pace"]
-#         if any(k in e for k in ["urgent", "紧急", "着急"]):
-#             rules += ["faster pace (+10-15%)", "higher energy", "compressed pauses"]
-#         if any(k in e for k in ["calm", "冷静", "稳重"]):
-#             rules += ["steady tempo", "even tone", "longer but gentle pauses"]
-#         # ✅ Suspicious / doubtful
-#         if any(k in e for k in ["suspicious", "doubtful","怀疑", "质疑"]):
-#             rules += ["slight pauses before accusations", "detectable tension", "tight pitch control"]
-#         # ✅ Logical / analytical
-#         if any(k in e for k in ["logical", "reasoned", "analytical", "分析", "理性"]):
-#             rules += ["even tone", "moderate pace", "clear articulation", "minimal emotional variance"]
-#             # ✅ NEW: Joking / playful
-#         if any(k in e for k in ["joking", "playful", "开玩笑", "调侃"]):
-#             rules += ["light bounciness", "slight upward inflection", "looser rhythm"]
-
-#         # ✅ NEW: Anxious / worried
-#         if any(k in e for k in ["anxious", "worried", "焦虑", "担心"]):
-#             rules += ["slightly shaky voice", "faster breathing", "minor pitch instability"]
-
-#         # ✅ NEW: Nervous / timid
-#         if any(k in e for k in ["nervous", "timid", "紧张"]):
-#             rules += ["soft onsets", "frequent micro-pauses", "lower projection"]
-
-#         # ✅ NEW: Observant / investigative
-#         if any(k in e for k in ["observant", "investigative", "观察", "审视"]):
-#             rules += ["slow deliberate pace", "analytical pauses", "clear enunciation"]
-
-
-#         # 合并成一句可读的提示；为空则返回空串
-#         return ("Style refinement: " + ", ".join(rules) + ".\n") if rules else ""
-
-#     def _sys_prompt(extra_hint: str = ""):
-#         # 这里把 emotion / intensity 的硬约束、calm-1 禁用、表达强度差异、
-#         # 以及 expression_instruction 的“增量表演提示”都放进去。
-#         return (
-#             "<|scene_desc_start|>"
-#             f"Actor {actor}. Emotion {emotion}. Intensity {intensity}.\n"
-#             "You MUST map the requested emotion to one of EXACTLY these categories:\n"
-#             "['happy','sad','angry','fearful','disgust','surprised'].\n"
-#             "Rules:\n"
-#             "- We do NOT have 'calm-1'. If requested, use neutral/mild instead.\n"
-#             "- Intensity: 1 = mild (lower energy, softer tone, slightly slower tempo), "
-#             "2 = strong (higher energy, clearer projection, possibly faster tempo for happy/angry).\n"
-#             "- Reflect emotion+intensity via tone, pitch, speed, energy, and pause timing.\n"
-#             f"- expression_instruction: {expression_instruction or '(none)'}\n"
-#             f"{_style_hint_from_expression(expression_instruction)}"
-#             + extra_hint +
-#             "<|scene_desc_end|>\n"
-#         )
-
-#     def _call(extra_hint=""):
-#         return client.chat.completions.create(
-#             model="higgs-audio-generation-Hackathon",
-#             messages=[{"role": "system", "content": _sys_prompt(extra_hint)}]
-#                      + samples
-#                      + [{"role": "user", "content": transcript}],
-#             modalities=["text","audio"],
-#             temperature=0.9, top_p=0.95,
-#             max_completion_tokens=1024,
-#         )
-
-#     # 统一的：生成 → 保存 → 静音质检 →（必要时）重试
-#     for attempt in range(max_retry + 1):
-#         if attempt > 0:
-#             print(f"Retry #{attempt} due to silence detected")
-
-#         # 重试时，附加减少静音/增强能量的提示，但保持情感与强度不变
-#         hint = "" if attempt == 0 else (
-#             "Reduce silence and shorten long pauses; increase vocal projection by 4-8 dB; "
-#             "preserve the same emotion and intensity.\n"
-#         )
-
-#         resp = _call(extra_hint=hint)
-
-#         try:
-#             save_audio(resp, out_name=out_name)
-#         except Exception:
-#             _fallback_save_audio_bytes(resp, out_name)
-
-#         # 通过 silence_filter 进行质检；False 表示“静音不过量”，可接受
-#         if not silence_filter(out_name):
-#             break
-
-#     return out_name
 
 
 def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):

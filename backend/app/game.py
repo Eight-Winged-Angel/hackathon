@@ -548,6 +548,15 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
     transcript_text = "..."
     try:
         history_text = _compose_game_history(game, max_events=40, max_chats=30)
+
+        game.last_history_text = history_text  # <<< 记录历史
+
+        plan = plan_and_speak(history_text, out_name=str(file_path))
+
+        # 这里会把音频直接写入 file_path
+        print(ai_player)
+        # plan = plan_and_speak(*ai_player.agent.get_relevant_info(game), out_name=str(file_path))
+
         game.last_history_text = history_text  # <<< 
         print(ai_player.agent.get_info(game))
         plan = plan_and_speak(ai_player.agent, game, out_name=str(file_path))
@@ -922,9 +931,7 @@ def trigger_speech(
     if game.status == "waiting":
         raise HTTPException(status_code=400, detail="Start the game before cueing speech.")
 
-    current_speaker_id = speaker_player_id or (
-        game.current_turn_player_id if game.workflow_stage == "discussion" else None
-    )
+    current_speaker_id = speaker_player_id
     if not current_speaker_id:
         raise HTTPException(status_code=400, detail="No speaker is currently active.")
 

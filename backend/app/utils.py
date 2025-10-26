@@ -10,7 +10,7 @@ from pydub import AudioSegment
 from pathlib import Path
 import numpy as np
 
-API_KEY = 'bai-z0i_bE-7vzfrH5O7himKEdD9Iy1Zq4NCbPzS99uhs34naN1U'
+API_KEY = 'bai-0tS-NIHC8A04XHOSbU7Z6qzF_tZHZyl-4l67jy5MdqBsawIj'
 # print(API_KEY)
 client = openai.Client(
     api_key=API_KEY,
