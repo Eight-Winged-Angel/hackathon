@@ -528,6 +528,7 @@ def _prune_audio(game: Game) -> None:
 
 def _store_audio_clip(game: Game, metadata: Dict[str, Any], clip_id: str, path: Path) -> None:
     game.audio_clips.append(metadata)
+    print(game.audio_clips)
     game.audio_files[clip_id] = path
     _prune_audio(game)
 
@@ -547,6 +548,7 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
     transcript_text = "..."
     try:
         history_text = _compose_game_history(game, max_events=40, max_chats=30)
+<<<<<<< HEAD
 
         game.last_history_text = history_text  # <<< 记录历史
 
@@ -556,6 +558,11 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
         print(ai_player)
         # plan = plan_and_speak(*ai_player.agent.get_relevant_info(game), out_name=str(file_path))
 
+=======
+        game.last_history_text = history_text  # <<< 
+        print(ai_player.agent.get_info(game))
+        plan = plan_and_speak(ai_player.agent.get_info(game), out_name=str(file_path))
+>>>>>>> e196d5876210ae284a3f99d1dd0a01c666cb84b8
         transcript_text = str(plan.get("content", "")).strip() or "..."
         game.last_think_output = str(plan.get("_raw_model_output", "")) or "(empty)"  # <<< 记录 think 原始输出
     except Exception as e:

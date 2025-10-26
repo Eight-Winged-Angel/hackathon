@@ -17,6 +17,9 @@ def chat_completion(messages: List[dict], max_tokens: int = 80, temperature: flo
     # return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
     return text_completion(messages)
 
+role_map = {'werewolf': 'mafia'}
+import json
+
 class AIAgent:
     """Lightweight agent bound to an AIPlayer.
 
@@ -30,6 +33,7 @@ class AIAgent:
         self.persona = persona or owner.name
         # Memory/history removed; keep a small scratchpad if needed
         self.knowledge: List[str] = []
+        self.private_info = []
 
     def system_prompt(self) -> str:
         base = f"You are {self.persona}, playing the social deduction game Mafia."
@@ -48,15 +52,13 @@ class AIAgent:
         )
         return base
 
+    def get_mapped_role(self):
+        role = getattr(self.owner, "role", None)
+        return role_map.get(role, role)
+
     def role_instructions(self) -> str:
         # Map game role to instruction flavor; avoid duplicating state here
-        role = getattr(self.owner, "role", None)
-        if role == "werewolf":
-            mapped = "mafia"
-        elif role == "detective":
-            mapped = "detective"
-        else:
-            mapped = "villager"
+        mapped = self.get_mapped_role()
         if mapped == "mafia":
             return (
                 "You are a member of the Mafia. Your goal is to eliminate all non-mafia players without being discovered."
@@ -79,14 +81,7 @@ class AIAgent:
             )
         else:
             return "You are a Villager. Act accordingly."
-    # Memory/history removed; previous summarization step skipped.
-    # def update_memory(self) -> str:
-    #     return ""
-
-    # History updates removed; rely on game.events for context.
-    # def Update(self, round_index: int, info: List[Any], event_type: str, semantic: Optional[str] = None) -> None:
-    #     return
-
+    
     def _event_log_excerpt(self, game: "Game") -> str:
         try:
             # Use most recent events as context
@@ -95,91 +90,74 @@ class AIAgent:
         except Exception:
             return ""
 
-    def get_relevant_info(self, game):
-        events_text = self._event_log_excerpt(game) if game else ""
-        return self.system_prompt(), self.role_instructions(), events_text
+    def get_role_specific_info(self, game):
+        mapped = self.get_mapped_role()
+        if mapped == 'mafia':
+            return {'allies': [p.name for p in game.alive_werewolves()]}
+        elif mapped == 'detective':
+            return {'past_detections': self.private_info}
+        return dict()
+        
+    def get_generic_info(self, game):
+        transcript_info = {'name', 'transcript', 'emotion'}
+        ai_transcript_info = {'name', 'message', 'emotion'}
+        generic = {'system_prompt': self.system_prompt(),
+                'role_prompt': self.role_instructions(),
+                'alive_player_list': [p.name for p in game.alive_players()],
+                'events': self._event_log_excerpt(game),
+                'transcript': [{k: clip[k] for k in (transcript_info & clip.keys())} for clip in game.audio_clips]}
+        return generic
 
-    def discuss(self, game: Optional["Game"] = None) -> str:
-        """Generate a discussion statement (uses game.events as context if provided)."""
-        events_text = self._event_log_excerpt(game) if game else ""
+    def get_info(self, game):
+        info = self.get_generic_info(game)
+        role_info = self.get_role_specific_info(game)
+        
+        role_messages = []
+        if role_info.keys():
+            role_messages = [{
+                "role": "system", "content": "This is your role specific information"
+            }, {"role": "system", "content": json.dumps(role_info)}]
+        
         messages = [
-            {"role": "system", "content": self.system_prompt()},
-            {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": "Recent events:"},
-            {"role": "system", "content": events_text},
-            {"role": "user", "content": f"Speak to the group." },
-        ]
-        try:
-            return chat_completion(messages, max_tokens=80, temperature=0.9)
-        except Exception as e:
-            return f"(failed to discuss: {e})"
+            {"role": "system", "content": info['system_prompt']},
+            {"role": "system", "content": info['role_prompt']},
+            {"role": "system", "content": f"This is the global event log:"},
+            {"role": "system", "content": info['events']},
+            {"role": "system", "content": f"This is the list of alive players"},
+            {"role": "system", "content": info['alive_player_list']},
+            {"role": "system", "content": f"This is the transcript in JSON format"},
+            {"role": "system", "content": json.dumps(info['transcript'])}] + role_messages
 
-    def vote(self, alive_players: List[str], game: Optional["Game"] = None) -> str:
-        events_text = self._event_log_excerpt(game) if game else ""
-        messages = [
-            {"role": "system", "content": self.system_prompt()},
-            {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": f"The followings are the past event:"},
-            {"role": "system", "content": events_text},
-            {"role": "user", "content": (
-                f"These players are still alive: {alive_players}. "
-                "Decide who you will vote to eliminate today. "
-                "Respond ONLY with the player ID (integer) of your choice."
+        print('INFO MESSAGES', messages)
+
+        return messages
+    
+    def choice_action(self, prompt, choices, max_tokens=20, temperature=0.2):
+        info_messages = self.get_info()
+        messages = info_messages + [{"role": "user", "content": (
+                f"{prompt}\n"
+                f"Output a choice from the list: {', '.join(choices)}. ONLY output your choice."
             )}
         ]
         try:
-            vt = chat_completion(messages, max_tokens=10, temperature=0.7)
-            return vt.strip()
-        except Exception:
+            return chat_completion(info_messages, max_tokens=max_tokens, temperature=temperature).strip()
+        except Exception as e:
+            print(e)
             return ""
+
+    def vote(self, alive_players: List[str], game: Optional["Game"] = None) -> str:
+        return self.choice_action('Decide who you will vote to eliminate today.', [p.name for p in game.alive_players()])
 
     def night_action(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
         """Perform role-specific night action (if applicable)."""
-        events_text = self._event_log_excerpt(game) if game else ""
-        messages = [
-            {"role": "system", "content": self.system_prompt()},
-            {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": f"The followings are the past event:"},
-            {"role": "system", "content": events_text},
-            {"role": "system", "content": "you know the followings are your teammates"},
-            {"role": "system", "content": self.owner.known_allies},
-            {"role": "user", "content": (
-                f"These players are still alive: {alive_players}. "
-                "Decide who you will kill tonight. "
-                "Respond ONLY with the player ID (integer) of your choice."
-            )}
-        ]
-        try:
-            kill = chat_completion(messages, max_tokens=10, temperature=0.7)
-            return kill.strip()
-        except Exception:
-            return ""
-
+        return self.choice_action('Decide who you will kill tonight.', [p.name for p in game.alive_players()])
+    
     def detect(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
         """Perform role-specific night action (if applicable)."""
-        events_text = self._event_log_excerpt(game) if game else ""
-        messages = [
-            {"role": "system", "content": self.system_prompt()},
-            {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": f"The followings are the past event:"},
-            {"role": "system", "content": events_text},
-            {"role": "system", "content": "you know the roles of the following players"},
-            {"role": "system", "content": "\n".join(self.owner.private_notes)},
-            {"role": "user", "content": (
-                f"These players are still alive: {alive_players}. "
-                "Decide who you will detect tonight. "
-                "Respond ONLY with the player ID (integer) of your choice."
-            )}
-        ]
-        try:
-            detect = chat_completion(messages, max_tokens=10, temperature=0.7)
-            return detect.strip()
-        except Exception:
-            return ""
-
+        return self.choice_action('Decide who you will detect tonight.', [p.name for p in game.alive_players()])
+    
     def detect_result(self, player_num: str, role: str) -> None:
-        self.knowledge.append(f"Player{player_num} is {role}")
-
+        self.private_info.append(f"Player{player_num} is {role}")
 
 class Player:
     def __init__(self, name: str, is_host: bool, *, is_ai: bool = False) -> None:
@@ -195,7 +173,6 @@ class Player:
 class HumanPlayer(Player):
     def __init__(self, name: str, *, is_host: bool = False) -> None:
         super().__init__(name, is_host=is_host, is_ai=False)
-
 
 class AIPlayer(Player):
     def __init__(self, name: str, *, is_host: bool = False) -> None:

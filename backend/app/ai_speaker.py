@@ -55,7 +55,7 @@ def _extract_json(text: str) -> Dict[str, Any]:
 
     raise ValueError("Failed to parse JSON from model output")
 
-def think_ai_utterance(game_history_text: str) -> Dict[str, Any]:
+def think_ai_utterance(messages) -> Dict[str, Any]:
     schema_hint = (
         "At the END of your answer, output a JSON object wrapped in a fenced code block:\n"
         "```json\n"
@@ -82,13 +82,13 @@ def think_ai_utterance(game_history_text: str) -> Dict[str, Any]:
         "- expression_instruction: short actionable refinement.\n"
     )
 
-    user_prompt = f"Game history:\n{game_history_text}\n\n{schema_hint}"
+    user_prompt = f"{schema_hint}"
 
     # Retry up to 3 times if JSON parse fails
     for attempt in range(3):
         resp = client.chat.completions.create(
             model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
-            messages=[
+            messages=messages + [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
@@ -413,8 +413,8 @@ def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
 # =============================
 # ✅ 串联：思考 → 发声
 # =============================
-def plan_and_speak(game_history: str, out_name="out.wav"):
-    plan = think_ai_utterance(game_history)
+def plan_and_speak(messages, out_name="out.wav"):
+    plan = think_ai_utterance(messages)
     generate_emotion(
         transcript=plan["content"],
         emotion=plan["emotion"],
