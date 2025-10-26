@@ -12,7 +12,7 @@ import os
 # API 配置
 # =============================
 # print(os.getenv('BOSON_API_KEY'))
-API_KEY = os.getenv('BOSON_API_KEY')
+# API_KEY = os.getenv('BOSON_API_KEY')
 client = openai.Client(
     api_key=API_KEY,
     base_url="https://hackathon.boson.ai/v1"
@@ -21,7 +21,6 @@ client = openai.Client(
 THINK_MODEL = "Qwen3-32B-Thinking-Hackathon"
 
 ALLOWED_EMOTIONS = {"neutral","calm","happy","sad","angry","fearful","disgust","surprised"}
-
 
 
 def _validate_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -292,27 +291,12 @@ def silence_filter(s, silence_limit=2000):
         return True
     return any([e - s > silence_limit for s, e in detect_silence(seg, min_silence_len=500, silence_thresh=-40)])
 
-# def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
-#     messages = [
-#             {"role":"system","content":"You are a helpful assistant."},
-#             {"role":"user","content":[to_audio(audio)]},
-#         ]
-#     resp = client.chat.completions.create(
-#         model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
-#         messages=messages,
-#         max_tokens=max_tokens,
-#         temperature=temperature,
-#         top_p=top_p,
-#         stream=False,
-#     )   
-#     return process_resp(resp)
-
 def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
     messages = [
             {"role":"system","content":"You are a helpful assistant."},
             {"role":"user","content":[
                 {"type":"audio_url","audio_url": {"url":upload_temp(audio)}},
-                {"type":"text","text":f"Transcribe this audio."}
+                {"type":"text","text":f"Transcribe this audio. Only output the transcript, do not output anything else."}
             ]},
         ]
     resp = client.chat.completions.create(
@@ -357,24 +341,6 @@ def plan_and_speak(player, game, out_name="out.wav"):
     # )
     return plan
 
-# def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
-#     print('SEMANTIC AUDIO', audio)
-#     messages = [
-#             {"role":"system","content":"You are a helpful assistant."},
-#             {"role":"user","content":[
-#                 {"type":"audio_url","audio_url": {"url":upload_temp(audio)}},
-#                 {"type":"text","text":f"Write a short description about the emotional information in the audio."}
-#             ]},
-#         ]
-#     resp = client.chat.completions.create(
-#         model="Qwen3-Omni-30B-A3B-Thinking-Hackathon",
-#         messages=messages,
-#         max_tokens=max_tokens,
-#         temperature=temperature,
-#         top_p=top_p,
-#         stream=False,
-#     )   
-#     return process_resp(resp)
 def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
     print('SEMANTIC AUDIO', audio)
     messages = [
