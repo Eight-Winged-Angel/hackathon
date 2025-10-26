@@ -550,11 +550,12 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
         history_text = _compose_game_history(game, max_events=40, max_chats=30)
         game.last_history_text = history_text  # <<< 
         print(ai_player.agent.get_info(game))
-        plan = plan_and_speak(ai_player.agent.get_info(game), out_name=str(file_path))
+        plan = plan_and_speak(ai_player.agent, game, out_name=str(file_path))
         transcript_text = str(plan.get("content", "")).strip() or "..."
         game.last_think_output = str(plan.get("_raw_model_output", "")) or "(empty)"  # <<< 记录 think 原始输出
     except Exception as e:
-
+        import traceback
+        traceback.print_exc()
         game.last_think_output = f"(TTS/plan failed: {e})"
         # 兜底：100ms 静音，避免前端报错
 
@@ -745,8 +746,10 @@ def add_ai_player(game_id: str, host_player_id: str, ai_name: Optional[str]) -> 
     while candidate in existing_names:
         candidate = f"{base_name} {suffix}"
         suffix += 1
-
-    ai_player = AIPlayer(candidate, is_host=False)
+    all_actors = set(range(1, 25))
+    existing_actors = {p.actor for p in game.players.values() if p.is_ai}
+    actor = (list(all_actors - existing_actors) + [None])[0]
+    ai_player = AIPlayer(candidate, is_host=False, actor=actor)
     game.players[ai_player.id] = ai_player
     if ai_player.id not in game.join_sequence:
         game.join_sequence.append(ai_player.id)

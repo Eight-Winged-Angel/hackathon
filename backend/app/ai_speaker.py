@@ -156,20 +156,21 @@ def _measure_dbfs(audio_bytes: bytes) -> float:
     return seg.dBFS
 # --- 工具函数结束 ---
 
-
-
-
 def b64(path):
     return base64.b64encode(open(path, "rb").read()).decode("utf-8")
-def to_audio(path, vol_boost=None):
-    if vol_boost is not None:
-        seg = AudioSegment.from_wav(path)
-        temp_name = f'{uuid4()}.wav'
-        (seg + vol_boost).export(temp_name, format='wav')
-        res = {'type': "input_audio", "input_audio": {'data': b64(temp_name), 'format': 'wav'}}
-        Path(temp_name).unlink()
-        return res
+
+def to_audio(path, min_vol=None, boost=0):
+    # if min_vol is not None:
+    min_vol = -100 if min_vol is None else min_vol
+    
+    seg = AudioSegment.from_wav(path)
+    temp_name = f'{uuid4()}.wav'
+    (seg + max(0, min_vol - seg.dBFS) + boost).export(temp_name, format='wav')
+    res = {'type': "input_audio", "input_audio": {'data': b64(temp_name), 'format': 'wav'}}
+    Path(temp_name).unlink()
+
     return {'type': "input_audio", "input_audio": {'data': b64(path), 'format': 'wav'}}
+
 import re
 def process_resp(resp):
     resp = resp.choices[0].message.content
@@ -192,22 +193,55 @@ def upload_temp(f):
         print('Sleep', t)
         t *= 2
 
-from pathlib import Path
-import pandas as pd
 import kagglehub
+from pathlib import Path
+from pydub import AudioSegment
+import numpy as np
+path = kagglehub.dataset_download("uwrfkaggler/ravdess-emotional-speech-audio")
+import pandas as pd
 
-# Download latest version
-path = Path(kagglehub.dataset_download("uwrfkaggler/ravdess-emotional-speech-audio")) 
-fs = path.glob('**/*.wav')
+fs = Path(path).glob('**/*.wav')
 df = pd.DataFrame({'f': [str(f) for f in fs]})
-
 df['stem'] = df.f.str.extract(r'.*\\(.*).wav')
 df2 = pd.DataFrame(df.stem.str.split('-').tolist(), columns=['modality', 'vocal', 'emotion', 'intensity', 'statement', 'repetition', 'actor']).astype(int)
 df_total = df.merge(df2, left_index=True, right_index=True)
-emote_1 = df_total[(df_total.emotion != 1) & (df_total.actor == 1)]
-neutral_1 = df_total[(df_total.emotion == 1) & (df_total.actor == 1)]
 statements = ["Kids are talking by the door", "Dogs are sitting by the door"]
 emotions = ['neutral', 'calm', 'happy', 'sad', 'angry', 'fearful', 'disgust', 'surprised']
+
+df_total['emotion'] = df_total.emotion.apply(lambda x: emotions[x - 1])
+df_total['statement'] = df_total.statement.apply(lambda x: statements[x - 1])
+
+def generate_audio(transcript, system_prompt=None, additional_messages=None, temperature=0.9, 
+                   top_p=0.95, top_k=50, max_tokens=512, out_name='out.wav', **kwargs):
+    additional_messages = [] if additional_messages is None else additional_messages
+    system_prompt = system_prompt or 'Generate speech based on the provided sample and transcript. <|scene_desc_start|>The audio is recorded in a quiet room with no noise. The speech is clearly audible and loud.<|scene_desc_end|>'
+    resp = client.chat.completions.create(
+        model="higgs-audio-generation-Hackathon",
+        messages=[  
+            {"role": "system", "content": system_prompt},
+        ] + additional_messages + [{'role': 'user', 'content': transcript}],
+        modalities=["text", "audio"],
+        max_completion_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        stream=False,
+        stop=["<|eot_id|>", "<|end_of_text|>", "<|audio_eos|>"],
+        extra_body={"top_k": top_k},
+        **kwargs
+    )  
+    save_audio(resp, out_name)
+
+def extract_samples(n_samples=None, **kwargs):
+    mask = df_total.f.notna()
+    for k, v in kwargs.items():
+        mask &= (df_total[k] == v)
+    samples = []
+    masked = df_total[mask]
+    n_samples = min(len(masked), n_samples) if n_samples is not None else len(masked)
+    for _, sample in df_total[mask].sample(n_samples).iterrows():
+        samples += [{'role': 'user', 'content': sample.statement}, 
+            {'role': 'assistant', 'content': [to_audio(sample.f, min_vol=-30)]}]
+    return samples
 
 def silence_filter(s, silence_limit=2000):
     from pydub import AudioSegment
@@ -219,140 +253,140 @@ def silence_filter(s, silence_limit=2000):
         return True
     return any([e - s > silence_limit for s, e in detect_silence(seg, min_silence_len=500, silence_thresh=-40)])
 
-def generate_emotion(
-    transcript,
-    emotion='happy',
-    actor=4,
-    intensity=1,
-    expression_instruction="",
-    out_name='out.wav',
-    max_retry=3
-):
-    """
-    生成音频 → 用 silence_filter 质检 → 不合格则最多重试 max_retry 次。
-    已接入 expression_instruction 来细化表达（语速/语调/停顿/能量/姿态）。
-    """
-    global df_total, emotions, statements, to_audio, save_audio
+# def generate_emotion(
+#     transcript,
+#     emotion='happy',
+#     actor=4,
+#     intensity=1,
+#     expression_instruction="",
+#     out_name='out.wav',
+#     max_retry=3
+# ):
+#     """
+#     生成音频 → 用 silence_filter 质检 → 不合格则最多重试 max_retry 次。
+#     已接入 expression_instruction 来细化表达（语速/语调/停顿/能量/姿态）。
+#     """
+#     global df_total, emotions, statements, to_audio, save_audio
 
-    # calm-1 fallback：不产出 calm-1
-    if (emotion == 'calm' and int(intensity) == 1):
-        emotion = 'neutral'
-        intensity = 1
+#     # calm-1 fallback：不产出 calm-1
+#     if (emotion == 'calm' and int(intensity) == 1):
+#         emotion = 'neutral'
+#         intensity = 1
 
-    # Few-shot 样本（可为空，零样本降级）
-    samples = []
-    try:
-        subset = df_total[
-            (df_total.emotion == emotions.index(emotion) + 1)
-            & (df_total.intensity == int(intensity))
-            & (df_total.actor == int(actor))
-        ]
-        for (_, a) in subset.iterrows():
-            samples += [
-                {"role": "user", "content": statements[a.statement - 1]},
-                {"role": "assistant", "content": [to_audio(a.f, vol_boost=5)]},
-            ]
-    except Exception:
-        samples = []
+#     # Few-shot 样本（可为空，零样本降级）
+#     samples = []
+#     try:
+#         subset = df_total[
+#             (df_total.emotion == emotions.index(emotion) + 1)
+#             & (df_total.intensity == int(intensity))
+#             & (df_total.actor == int(actor))
+#         ]
+#         for (_, a) in subset.iterrows():
+#             samples += [
+#                 {"role": "user", "content": statements[a.statement - 1]},
+#                 {"role": "assistant", "content": [to_audio(a.f, vol_boost=5)]},
+#             ]
+#     except Exception:
+#         samples = []
 
-    # 将 expression_instruction 转成更明确的表演提示（可按需扩展）
-    def _style_hint_from_expression(expr: str) -> str:
-        e = (expr or "").lower().strip()
-        # 轻量映射：把常见词转成更具体的演绎指令
-        rules = []
-        if any(k in e for k in ["assertive", "confident", "坚定", "果断", "强势"]):
-            rules += ["tighter phrasing", "shorter pauses", "firm tone", "reduced upspeak"]
-        if any(k in e for k in ["defensive", "防御", "被动", "解释"]):
-            rules += ["slightly faster onset", "narrow pitch range", "controlled energy"]
-        if any(k in e for k in ["sarcastic", "讽刺", "嘲讽", "轻蔑"]):
-            rules += ["slight drawl", "downward inflection", "subtle scoff timbre"]
-        if any(k in e for k in ["provocative", "挑衅"]):
-            rules += ["higher projection", "sharper onsets", "brisk tempo"]
-        if any(k in e for k in ["hesitant", "犹豫"]):
-            rules += ["longer micro-pauses", "softer onset", "slower pace"]
-        if any(k in e for k in ["urgent", "紧急", "着急"]):
-            rules += ["faster pace (+10-15%)", "higher energy", "compressed pauses"]
-        if any(k in e for k in ["calm", "冷静", "稳重"]):
-            rules += ["steady tempo", "even tone", "longer but gentle pauses"]
-        # ✅ Suspicious / doubtful
-        if any(k in e for k in ["suspicious", "doubtful","怀疑", "质疑"]):
-            rules += ["slight pauses before accusations", "detectable tension", "tight pitch control"]
-        # ✅ Logical / analytical
-        if any(k in e for k in ["logical", "reasoned", "analytical", "分析", "理性"]):
-            rules += ["even tone", "moderate pace", "clear articulation", "minimal emotional variance"]
-            # ✅ NEW: Joking / playful
-        if any(k in e for k in ["joking", "playful", "开玩笑", "调侃"]):
-            rules += ["light bounciness", "slight upward inflection", "looser rhythm"]
+#     # 将 expression_instruction 转成更明确的表演提示（可按需扩展）
+#     def _style_hint_from_expression(expr: str) -> str:
+#         e = (expr or "").lower().strip()
+#         # 轻量映射：把常见词转成更具体的演绎指令
+#         rules = []
+#         if any(k in e for k in ["assertive", "confident", "坚定", "果断", "强势"]):
+#             rules += ["tighter phrasing", "shorter pauses", "firm tone", "reduced upspeak"]
+#         if any(k in e for k in ["defensive", "防御", "被动", "解释"]):
+#             rules += ["slightly faster onset", "narrow pitch range", "controlled energy"]
+#         if any(k in e for k in ["sarcastic", "讽刺", "嘲讽", "轻蔑"]):
+#             rules += ["slight drawl", "downward inflection", "subtle scoff timbre"]
+#         if any(k in e for k in ["provocative", "挑衅"]):
+#             rules += ["higher projection", "sharper onsets", "brisk tempo"]
+#         if any(k in e for k in ["hesitant", "犹豫"]):
+#             rules += ["longer micro-pauses", "softer onset", "slower pace"]
+#         if any(k in e for k in ["urgent", "紧急", "着急"]):
+#             rules += ["faster pace (+10-15%)", "higher energy", "compressed pauses"]
+#         if any(k in e for k in ["calm", "冷静", "稳重"]):
+#             rules += ["steady tempo", "even tone", "longer but gentle pauses"]
+#         # ✅ Suspicious / doubtful
+#         if any(k in e for k in ["suspicious", "doubtful","怀疑", "质疑"]):
+#             rules += ["slight pauses before accusations", "detectable tension", "tight pitch control"]
+#         # ✅ Logical / analytical
+#         if any(k in e for k in ["logical", "reasoned", "analytical", "分析", "理性"]):
+#             rules += ["even tone", "moderate pace", "clear articulation", "minimal emotional variance"]
+#             # ✅ NEW: Joking / playful
+#         if any(k in e for k in ["joking", "playful", "开玩笑", "调侃"]):
+#             rules += ["light bounciness", "slight upward inflection", "looser rhythm"]
 
-        # ✅ NEW: Anxious / worried
-        if any(k in e for k in ["anxious", "worried", "焦虑", "担心"]):
-            rules += ["slightly shaky voice", "faster breathing", "minor pitch instability"]
+#         # ✅ NEW: Anxious / worried
+#         if any(k in e for k in ["anxious", "worried", "焦虑", "担心"]):
+#             rules += ["slightly shaky voice", "faster breathing", "minor pitch instability"]
 
-        # ✅ NEW: Nervous / timid
-        if any(k in e for k in ["nervous", "timid", "紧张"]):
-            rules += ["soft onsets", "frequent micro-pauses", "lower projection"]
+#         # ✅ NEW: Nervous / timid
+#         if any(k in e for k in ["nervous", "timid", "紧张"]):
+#             rules += ["soft onsets", "frequent micro-pauses", "lower projection"]
 
-        # ✅ NEW: Observant / investigative
-        if any(k in e for k in ["observant", "investigative", "观察", "审视"]):
-            rules += ["slow deliberate pace", "analytical pauses", "clear enunciation"]
+#         # ✅ NEW: Observant / investigative
+#         if any(k in e for k in ["observant", "investigative", "观察", "审视"]):
+#             rules += ["slow deliberate pace", "analytical pauses", "clear enunciation"]
 
 
-        # 合并成一句可读的提示；为空则返回空串
-        return ("Style refinement: " + ", ".join(rules) + ".\n") if rules else ""
+#         # 合并成一句可读的提示；为空则返回空串
+#         return ("Style refinement: " + ", ".join(rules) + ".\n") if rules else ""
 
-    def _sys_prompt(extra_hint: str = ""):
-        # 这里把 emotion / intensity 的硬约束、calm-1 禁用、表达强度差异、
-        # 以及 expression_instruction 的“增量表演提示”都放进去。
-        return (
-            "<|scene_desc_start|>"
-            f"Actor {actor}. Emotion {emotion}. Intensity {intensity}.\n"
-            "You MUST map the requested emotion to one of EXACTLY these categories:\n"
-            "['happy','sad','angry','fearful','disgust','surprised'].\n"
-            "Rules:\n"
-            "- We do NOT have 'calm-1'. If requested, use neutral/mild instead.\n"
-            "- Intensity: 1 = mild (lower energy, softer tone, slightly slower tempo), "
-            "2 = strong (higher energy, clearer projection, possibly faster tempo for happy/angry).\n"
-            "- Reflect emotion+intensity via tone, pitch, speed, energy, and pause timing.\n"
-            f"- expression_instruction: {expression_instruction or '(none)'}\n"
-            f"{_style_hint_from_expression(expression_instruction)}"
-            + extra_hint +
-            "<|scene_desc_end|>\n"
-        )
+#     def _sys_prompt(extra_hint: str = ""):
+#         # 这里把 emotion / intensity 的硬约束、calm-1 禁用、表达强度差异、
+#         # 以及 expression_instruction 的“增量表演提示”都放进去。
+#         return (
+#             "<|scene_desc_start|>"
+#             f"Actor {actor}. Emotion {emotion}. Intensity {intensity}.\n"
+#             "You MUST map the requested emotion to one of EXACTLY these categories:\n"
+#             "['happy','sad','angry','fearful','disgust','surprised'].\n"
+#             "Rules:\n"
+#             "- We do NOT have 'calm-1'. If requested, use neutral/mild instead.\n"
+#             "- Intensity: 1 = mild (lower energy, softer tone, slightly slower tempo), "
+#             "2 = strong (higher energy, clearer projection, possibly faster tempo for happy/angry).\n"
+#             "- Reflect emotion+intensity via tone, pitch, speed, energy, and pause timing.\n"
+#             f"- expression_instruction: {expression_instruction or '(none)'}\n"
+#             f"{_style_hint_from_expression(expression_instruction)}"
+#             + extra_hint +
+#             "<|scene_desc_end|>\n"
+#         )
 
-    def _call(extra_hint=""):
-        return client.chat.completions.create(
-            model="higgs-audio-generation-Hackathon",
-            messages=[{"role": "system", "content": _sys_prompt(extra_hint)}]
-                     + samples
-                     + [{"role": "user", "content": transcript}],
-            modalities=["text","audio"],
-            temperature=0.9, top_p=0.95,
-            max_completion_tokens=1024,
-        )
+#     def _call(extra_hint=""):
+#         return client.chat.completions.create(
+#             model="higgs-audio-generation-Hackathon",
+#             messages=[{"role": "system", "content": _sys_prompt(extra_hint)}]
+#                      + samples
+#                      + [{"role": "user", "content": transcript}],
+#             modalities=["text","audio"],
+#             temperature=0.9, top_p=0.95,
+#             max_completion_tokens=1024,
+#         )
 
-    # 统一的：生成 → 保存 → 静音质检 →（必要时）重试
-    for attempt in range(max_retry + 1):
-        if attempt > 0:
-            print(f"Retry #{attempt} due to silence detected")
+#     # 统一的：生成 → 保存 → 静音质检 →（必要时）重试
+#     for attempt in range(max_retry + 1):
+#         if attempt > 0:
+#             print(f"Retry #{attempt} due to silence detected")
 
-        # 重试时，附加减少静音/增强能量的提示，但保持情感与强度不变
-        hint = "" if attempt == 0 else (
-            "Reduce silence and shorten long pauses; increase vocal projection by 4-8 dB; "
-            "preserve the same emotion and intensity.\n"
-        )
+#         # 重试时，附加减少静音/增强能量的提示，但保持情感与强度不变
+#         hint = "" if attempt == 0 else (
+#             "Reduce silence and shorten long pauses; increase vocal projection by 4-8 dB; "
+#             "preserve the same emotion and intensity.\n"
+#         )
 
-        resp = _call(extra_hint=hint)
+#         resp = _call(extra_hint=hint)
 
-        try:
-            save_audio(resp, out_name=out_name)
-        except Exception:
-            _fallback_save_audio_bytes(resp, out_name)
+#         try:
+#             save_audio(resp, out_name=out_name)
+#         except Exception:
+#             _fallback_save_audio_bytes(resp, out_name)
 
-        # 通过 silence_filter 进行质检；False 表示“静音不过量”，可接受
-        if not silence_filter(out_name):
-            break
+#         # 通过 silence_filter 进行质检；False 表示“静音不过量”，可接受
+#         if not silence_filter(out_name):
+#             break
 
-    return out_name
+#     return out_name
 
 
 def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
@@ -377,14 +411,25 @@ def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
 # =============================
 # ✅ 串联：思考 → 发声
 # =============================
-def plan_and_speak(messages, out_name="out.wav"):
-    plan = think_ai_utterance(messages)
-    generate_emotion(
-        transcript=plan["content"],
-        emotion=plan["emotion"],
-        actor=plan["actor"],
-        intensity=plan["intensity"],
-        expression_instruction=plan.get("expression_instruction",""),
-        out_name=out_name
-    )
+def plan_and_speak(player, game, out_name="out.wav"):
+    plan = think_ai_utterance(player.get_info(game))
+    for _ in range(3):
+        generate_audio(transcript = plan['content'], 
+                    additional_messages=extract_samples(n_samples=3, 
+                                                        actor=player.owner.actor, 
+                                                        intensity=plan['intensity'], 
+                                                        emotion=plan['emotion'],
+                                                        ),
+                    out_name=out_name)
+        if not silence_filter(out_name):
+            break
+    
+    # generate_emotion(
+    #     transcript=plan["content"],
+    #     emotion=plan["emotion"],
+    #     actor=plan["actor"],
+    #     intensity=plan["intensity"],
+    #     expression_instruction=plan.get("expression_instruction",""),
+    #     out_name=out_name
+    # )
     return plan

@@ -175,10 +175,12 @@ class HumanPlayer(Player):
         super().__init__(name, is_host=is_host, is_ai=False)
 
 class AIPlayer(Player):
-    def __init__(self, name: str, *, is_host: bool = False) -> None:
+    def __init__(self, name: str, *, is_host: bool = False, actor=None) -> None:
         super().__init__(name, is_host=is_host, is_ai=True)
         # Attach agent without duplicating role/teammates
         self.agent = AIAgent(owner=self, persona=name)
+        self.actor = actor
+        print('ACTOR IS', self.actor)
 
     def on_role_assigned(self, game: "Game") -> None:
         # Keep known_allies already set by game; agent reads from owner fields.
