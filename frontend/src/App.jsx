@@ -929,7 +929,9 @@ export default function App() {
     const allSpoken =
       isDiscussion &&
       turnOrder.length > 0 &&
-      gameState.currentTurnPosition === turnOrder.length;
+      gameState.currentTurnPosition === turnOrder.length &&
+      aiCuedThisTurn &&
+      !(turnBusy || aiAudioPlaying);
 
     const stageDescription = (() => {
       if (isNight) {
@@ -1068,6 +1070,8 @@ export default function App() {
       const allVoted = voterIdsWhoVoted.size === alive.length;
 
       if (!allVoted) {
+        const myVote = (gameState.votes || []).find((v) => v.voterId === playerId) || null;
+        const myVotedTarget = myVote ? (myVote.targetPlayerId ?? "__abstain__") : null;
         votingControls = (
           <div
             className="turn-controls"
@@ -1115,28 +1119,43 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ marginLeft: "auto" }}>
-                      {p.playerId === playerId ? (
-                        <button
-                          type="button"
-                          onClick={() => handleVote(null)}
-                          disabled={voteBusy}
-                          title="Abstain from voting"
-                          className="btn"
-                          style={{ padding: "0.25rem 0.6rem" }}
-                        >
-                          {voteBusy ? "?" : "Do Not Vote"}
-                        </button>
+                      {myVotedTarget !== null ? (
+                        (myVotedTarget === "__abstain__" && p.playerId === playerId) ||
+                        (myVotedTarget !== "__abstain__" && myVotedTarget === p.playerId) ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="btn"
+                            title="You have voted"
+                            style={{ padding: "0.25rem 0.6rem", background: "rgba(148, 163, 184, 0.25)", color: "#cbd5e1", cursor: "not-allowed" }}
+                          >
+                            Voted
+                          </button>
+                        ) : null
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleVote(p.playerId)}
-                          disabled={voteBusy}
-                          title={`Vote to eliminate ${p.name}`}
-                          className="btn"
-                          style={{ padding: "0.25rem 0.6rem" }}
-                        >
-                          {voteBusy ? "?" : "Vote"}
-                        </button>
+                        p.playerId === playerId ? (
+                          <button
+                            type="button"
+                            onClick={() => handleVote(null)}
+                            disabled={voteBusy}
+                            title="Abstain from voting"
+                            className="btn"
+                            style={{ padding: "0.25rem 0.6rem" }}
+                          >
+                            {voteBusy ? "?" : "Do Not Vote"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleVote(p.playerId)}
+                            disabled={voteBusy}
+                            title={`Vote to eliminate ${p.name}`}
+                            className="btn"
+                            style={{ padding: "0.25rem 0.6rem" }}
+                          >
+                            {voteBusy ? "?" : "Vote"}
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
