@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from backend.app.player import Player, HumanPlayer, AIPlayer
 
 #ADD: ai speaker
-from backend.app.ai_speaker import plan_and_speak, asr
+from backend.app.ai_speaker import plan_and_speak, asr, semantic_info
 
 
 def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int = 30) -> str:
@@ -137,7 +137,7 @@ class AudioClipInfo(BaseModel):
     size: int
     storagePath: Optional[str] = None
     transcript: Optional[str] = None
-
+    emotion: Optional[str] = None
 
 class ChatMessage(BaseModel):
     messageId: str
@@ -581,6 +581,7 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
         "size": size,
         "storagePath": str(file_path),
         "transcript": transcript_text,
+        "emotion": semantic_info(filename)
     }
     _store_audio_clip(game, metadata, clip_id, file_path)
     return metadata
@@ -1213,6 +1214,7 @@ async def save_audio_from_server(game_id: str, player_id: str, file: UploadFile)
         "size": len(data),
         "storagePath": str(file_path),
         "transcript": transcript,
+        "emotion": semantic_info(file_path)
     }
 
     _store_audio_clip(game, metadata, clip_id, file_path)
