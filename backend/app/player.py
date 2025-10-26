@@ -3,19 +3,19 @@ from __future__ import annotations
 import random
 import uuid
 from typing import Any, List, Optional, TYPE_CHECKING
-
+from backend.app.utils import text_completion
 # Only import Game for type checking to avoid circular imports at runtime
 if TYPE_CHECKING:
     from backend.app.game import Game
 
-
 # Lightweight local stub for LLM calls used by AIAgent.
 def chat_completion(messages: List[dict], max_tokens: int = 80, temperature: float = 0.7, model: Optional[str] = None) -> str:
     # Deterministic short response based on last content; avoids network dependency.
-    last = next((m.get("content", "") for m in reversed(messages) if isinstance(m, dict)), "")
-    words = [w for w in (last or "").split()]
-    return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
-
+    print('RUNNING CHAT COMPLETION', messages)
+    # last = next((m.get("content", "") for m in reversed(messages) if isinstance(m, dict)), "")
+    # words = [w for w in (last or "").split()]
+    # return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
+    return text_completion(messages)
 
 class AIAgent:
     """Lightweight agent bound to an AIPlayer.
@@ -107,7 +107,7 @@ class AIAgent:
             {"role": "system", "content": self.role_instructions()},
             {"role": "system", "content": "Recent events:"},
             {"role": "system", "content": events_text},
-            {"role": "user", "content": f"Speak to the group. Reasoning: {self.reason}"},
+            {"role": "user",  "content": f"Generate some discussion to the group. Do not include anything else in the output"},
         ]
         try:
             return chat_completion(messages, max_tokens=80, temperature=0.9)
@@ -118,7 +118,7 @@ class AIAgent:
         messages = [
             {"role": "system", "content": self.system_prompt()},
             {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": f"The followings is your reasoning: {self.reason}"},
+            {"role": "system", "content": f"The following is the event log in JSON format: {self.reason}"},
             {"role": "user", "content": (
                 f"These players are still alive: {alive_players}. "
                 "Decide who you will vote to eliminate today. "
@@ -244,18 +244,18 @@ class AIPlayer(Player):
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the hitorical events"},
+                {"role": "system", "content": "The followings are all the historical events"},
                 {"role": "system", "content": events_text},
                 {"role": "system", "content": f"{self.known_allies} are your mafia team mates."},
-                {"role": "user", "content": f"Now using the above info, say the following to other players to deceive them with your reasoning {reasoning}"},
+                {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
             ]
         else:
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the hitorical events"},
+                {"role": "system", "content": "The followings are all the historical events"},
                 {"role": "system", "content": events_text},
-                {"role": "user", "content": f"Now eloquently express your reasoning on who are the mafias with your thinking: {reasoning}"},
+                {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
             ]
 
         try:
