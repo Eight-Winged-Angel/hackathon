@@ -22,7 +22,7 @@ const NIGHT_STAGE_DETAILS = {
   },
   detective: {
     label: "Detective Investigates",
-    hostPrompt: "Share the detective's inspection results.",
+    hostPrompt: "The detective investigates.",
     playerPrompt: "Detective insight is being resolved.",
     buttonLabel: "Advance Night • Detective",
   },
@@ -247,7 +247,7 @@ export default function App() {
         ? "You are a werewolf. Blend in during the day."
         : playerSession.role === "detective"
         ? "You are the detective. Investigate quietly."
-        : "You are a civilian. Trust your instincts.";
+        : "You are a villager. Trust your instincts.";
     return `${title} ${playerSession.roleSummary || ""}`.trim();
   }, [playerSession, gameState]);
 
@@ -1612,7 +1612,7 @@ export default function App() {
     <div className="app-container">
       <h1>Moonlit Mafia</h1>
       <p style={{ color: "#cbd5f5" }}>
-        Social deduction under a full moon: civilians talk by day, werewolves hunt by night, and the detective searches
+        Social deduction under a full moon: villagers talk by day, werewolves hunt by night, and the detective searches
         for the truth.
       </p>
 

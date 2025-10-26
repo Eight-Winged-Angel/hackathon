@@ -5,10 +5,13 @@ from typing import Dict, Any, Optional
 from pydub import AudioSegment
 import openai
 from uuid import uuid4
+import os
+
 
 # =============================
 # API 配置
 # =============================
+# print(os.getenv('BOSON_API_KEY'))
 API_KEY = os.getenv('BOSON_API_KEY')
 client = openai.Client(
     api_key=API_KEY,
@@ -71,7 +74,7 @@ def think_ai_utterance(messages) -> Dict[str, Any]:
     )
 
     system_prompt = (
-        "You are a planner that generates a speaking plan for a player in a Werewolf/Mafia game.\n"
+        "You are a planner that generates a speaking plan for a player in a Werewolf game.\n"
         "This game is played virtually; do not include any info about the physical space\n"
         "You may include brief hidden reasoning **before** the final JSON result, outside the JSON block.\n"
         "The **final** part of your message must be exactly one JSON object, in a fenced ```json code block.\n"
@@ -378,7 +381,7 @@ def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=
             {"role":"system","content":"You are a helpful assistant."},
             {"role":"user","content":[
                 {"type":"audio_url","audio_url": {"url":upload_temp(audio)}},
-                {"type":"text","text":f"Write a short description about the emotional information in the audio."}
+                {"type":"text","text":f"Write a short description about the prosody, tone, and emotional information in the audio."}
             ]},
         ]
     resp = client.chat.completions.create(

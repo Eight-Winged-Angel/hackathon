@@ -11,12 +11,12 @@ from pathlib import Path
 import numpy as np
 
 API_KEY = os.getenv('BOSON_API_KEY')
+print(os.getenv('BOSON_API_KEY'))
 # print(API_KEY)
 client = openai.Client(
     api_key=API_KEY,
     base_url="https://hackathon.boson.ai/v1"
 )
-
 
 def b64(path):
     return base64.b64encode(open(path, "rb").read()).decode("utf-8")
@@ -69,5 +69,4 @@ def text_completion(messages, model='Qwen3-32B-thinking-Hackathon', temperature=
                                     temperature=temperature,
                                     top_p=top_p,
                                    **kwargs)
-    print(process_resp(resp))
     return process_resp(resp)

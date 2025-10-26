@@ -18,7 +18,7 @@ def chat_completion(messages: List[dict], max_tokens: int = 80, temperature: flo
     res = text_completion(messages)
     print('RESULT OF CHAT COMPLETION', res)
     return res
-role_map = {'werewolf': 'mafia'}
+role_map = {}
 import json
 
 class AIAgent:
@@ -36,23 +36,26 @@ class AIAgent:
         self.knowledge: List[str] = []
         self.private_info = []
 
-    def system_prompt(self) -> str:
-        base = f"You are {self.persona}, playing the social deduction game Mafia. \n"
+    def system_prompt(self, game) -> str:
+        base = f"You are {self.persona}, playing the social deduction game Werewolf. \n"
         base += (
             "Rules:\n"
             "- The game alternates between Day (discussion and voting) and Night (actions).\n"
-            "- Mafia know each other and can eliminate one player each night.\n"
+            "- Werewolves know each other and can eliminate one player each night.\n"
             "- The Detective can investigate one player each night.\n"
-            "- During the Day, all players discuss and vote to eliminate one suspected Mafia.\n"
-            "- The game ends when all Mafia are eliminated or the Mafia equal the number of Town members."
+            "- During the Day, all players discuss and vote to eliminate one suspected werewolf.\n"
+            "- The game ends when all werewolves are eliminated or the werewolves equal the number of Town members. \n"
         )
+        base += (f"- In the current game, there are {len(game.players)} players and {len(game.werewolf_ids)} werewolves.\n\n")
         base += (
-            " You must think and speak as a human player in this game."
-            " Be strategic, persuasive, and consistent with your assigned role."
-            " Never reveal your role unless strategically beneficial."
-            " Pay attention to the logical flaw in other player's transcripts"
-            " Also pay attention to the emotional information of other player's transcripts and use it as an argument when debating"
-            " Finally pay attention to the voting event in the past event log and form logical reasoning"
+            "Here are some guidelines for how to think: \n"
+            " You are playing a virtual game. Do not include references to physical space (e.g. who was nearest to X?), focus only on game actions and speech. \n"
+            " Think and speak like a human player. \n"
+            " Be strategic, persuasive, and consistent with your assigned role. \n"
+            " Never reveal your role unless strategically beneficial.\n"
+            " Pay attention to the logical consistency of other player's transcripts. \n"
+            " Pay attention to the emotional information of other player's transcripts and use it as an argument when debating. \n"
+            " Pay attention to the voting events in the past event log and ensure consistent logical reasoning. \n"
         )
         return base
 
@@ -63,16 +66,16 @@ class AIAgent:
     def role_instructions(self) -> str:
         # Map game role to instruction flavor; avoid duplicating state here
         mapped = self.get_mapped_role()
-        if mapped == "mafia":
+        if mapped == "werewolf":
             return (
-                "You are a member of the Mafia. Your goal is to eliminate all non-mafia players without being discovered."
+                "You are a Werewolf. Your goal is to eliminate all villagers without being discovered."
                 " Act innocent and persuasive during the day."
                 " Contribute to discussion during the day"
                 "subtly shift suspicion toward active players or those who survive many nights "
             )
         elif mapped == "villager":
             return (
-                "You are a Villager. You have no special powers. Your goal is to find and vote out all Mafia members."
+                "You are a Villager. You have no special powers. Your goal is to find and vote out all Werewolves."
                 " During the day, discuss suspicions and vote wisely."
                 "Share reasoning, but avoid blindly following others. "
                 " Defend youself if other players attacked you before, also defend other players if you think they are your teammate"
@@ -80,11 +83,11 @@ class AIAgent:
         elif mapped == "doctor":
             return (
                 "You are the Doctor. Each night, you may choose one player to save from elimination."
-                " Try to deduce who the Mafia might target."
+                " Try to deduce who the Werewolves might target."
             )
         elif mapped == "detective":
             return (
-                "You are the Detective. Each night, you can investigate one player to learn if they are Mafia."
+                "You are the Detective. Each night, you can investigate one player to learn if they are a Werewolf."
                 " Use your findings discreetly to influence votes."
                 " Investigate players who seem manipulative or too quiet."
                 " Use your findings discreetly to influence votes."
@@ -112,7 +115,7 @@ class AIAgent:
         
     def get_generic_info(self, game):
         transcript_info = {'name', 'transcript', 'emotion', 'round_number'}
-        generic = {'system_prompt': self.system_prompt(),
+        generic = {'system_prompt': self.system_prompt(game),
                 'role_prompt': self.role_instructions(),
                 'alive_player_list': [p.name for p in game.alive_players()],
                 'events': self._event_log_excerpt(game),
@@ -133,12 +136,12 @@ class AIAgent:
         messages = [
             {"role": "system", "content": info['system_prompt']},
             {"role": "system", "content": info['role_prompt']},
-            {"role": "system", "content": f"The current round number is {info['current_round_number']}"},
-            {"role": "system", "content": f"This is the global event log:"},
+            {"role": "system", "content": f"\nThe current round number is {info['current_round_number']}"},
+            {"role": "system", "content": f"\nThis is the global event log:"},
             {"role": "system", "content": info['events']},
-            {"role": "system", "content": f"This is the list of alive players"},
+            {"role": "system", "content": f"\nThis is the list of alive players"},
             {"role": "system", "content": ', '.join(info['alive_player_list'])},
-            {"role": "system", "content": f"This is the current transcript. Each line contains information about the speaker, what they said, and the emotion they said it in. It will be in the format: `SPEAKER`: `CONTENT` (Emotion: `EMOTION`). Round transitions will also be announced in the transcript. The transcript will end with the line TRANSCRIPT END."},
+            {"role": "system", "content": f"\nThis is the current transcript. Each line contains information about the speaker, what they said, and the emotion they said it in. It will be in the format: `SPEAKER`: `CONTENT` (Emotion: `EMOTION`). Round transitions will also be announced in the transcript. The transcript will begin with the line TRANSCRIPT START and end with the line TRANSCRIPT END."},
             {"role": "system", "content": info['transcript']}] + role_messages
 
         #### Merge test

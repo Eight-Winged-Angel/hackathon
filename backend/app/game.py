@@ -21,7 +21,6 @@ from backend.app.player import Player, HumanPlayer, AIPlayer
 #ADD: ai speaker
 from backend.app.ai_speaker import plan_and_speak, asr, semantic_info
 
-
 NAMES = [
     "Evelyn Cross",
     "Marco Vance",
@@ -413,7 +412,7 @@ class Game:
         return "wolves"
 
 ROLE_SUMMARIES: Dict[str, str] = {
-    "civilian": "Stay vigilant, discuss clues, and vote smart to catch the pack.",
+    "villager": "Stay vigilant, discuss clues, and vote smart to catch the pack.",
     "detective": "Investigate quietly each night. Share just enough to sway the group.",
     "werewolf": "Blend in during the day and secretly thin the crowd at night.",
 }
@@ -427,7 +426,7 @@ AI_PHRASES = [
     "Listen for shaky stories. Wolves always trip over the details.",
     "Detective, keep your clues subtle. The village needs you alive.",
     "If the crowd talks in circles, a wolf is steering the debate.",
-    "Numbers matter. Protect the quiet civilians before it's too late.",
+    "Numbers matter. Protect the quiet villagers before it's too late.",
     "I smell fur near the well—maybe a nervous voice gave it away.",
     "When accusations fly too fast, someone is covering their tracks.",
     "Spread lanterns, not panic. Wolves thrive in confusion.",
@@ -508,13 +507,13 @@ def _evaluate_victory(game: Game) -> bool:
 
 def _assign_roles(game: Game) -> None:
     if len(game.players) < 4:
-        raise HTTPException(status_code=400, detail="Need at least 4 players for Mafia.")
+        raise HTTPException(status_code=400, detail="Need at least 4 players for Werewolf.")
 
     player_ids = list(game.players.keys())
     random.shuffle(player_ids)
 
     for player in game.players.values():
-        player.role = "civilian"
+        player.role = "villager"
         player.is_alive = True
         player.private_notes = []
         player.known_allies = []
