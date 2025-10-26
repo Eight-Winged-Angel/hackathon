@@ -155,7 +155,7 @@ class AIAgent:
 
     def vote(self, alive_players: List[str], game) -> str:
         choice_dict = {p.name: p for p in game.alive_players()}
-        return choice_dict[self.choice_action(game, 'Decide who you will vote to eliminate today.', list(choices_dict.keys()))].id
+        return choice_dict[self.choice_action(game, 'Decide who you will vote to eliminate today.', list(choice_dict.keys()))].id
 
     def night_action(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
         # """Perform role-specific night action (if applicable)."""
