@@ -194,15 +194,11 @@ def upload_temp(f):
 
 from pathlib import Path
 import pandas as pd
-<<<<<<< HEAD
 import kagglehub
 
 # Download latest version
 path = Path(kagglehub.dataset_download("uwrfkaggler/ravdess-emotional-speech-audio")) 
 fs = path.glob('**/*.wav')
-=======
-fs = Path(r"C:\Users\19324\.cache\kagglehub\datasets\uwrfkaggler\ravdess-emotional-speech-audio").glob('**/*.wav')
->>>>>>> e87f47ce79caa2b8678b84b5939f4103fade2c56
 df = pd.DataFrame({'f': [str(f) for f in fs]})
 
 df['stem'] = df.f.str.extract(r'.*\\(.*).wav')
