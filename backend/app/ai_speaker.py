@@ -61,22 +61,21 @@ def think_ai_utterance(messages) -> Dict[str, Any]:
         "```json\n"
         '{\n'
         '  "content": "{content that should be said}",\n'
-        '  "actor": 1..24,\n'
         '  "emotion": "happy|sad|angry|fearful|disgust, etc.",\n'
-        '  "intensity": 1 or 2,\n'
-        '  "expression_instruction": "..." \n'
+        '  "intensity": 1 or 2\n'
+        '  "expression_instruction": "{short sentence describing emotion}"\n'
         '}\n'
         "```\n"
         "Do not put anything after the fenced JSON block."
     )
 
     system_prompt = (
-        "You are a planner that generates a speaking plan for a player in a Werewolf game.\n"
+        "You are a planner that generates a speaking plan for a player in a Werewolf/Mafia game.\n"
+        "This game is played virtually; do not include any info about the physical space\n"
         "You may include brief hidden reasoning **before** the final JSON result, outside the JSON block.\n"
         "The **final** part of your message must be exactly one JSON object, in a fenced ```json code block.\n"
         "Constraints:\n"
         "- content: concise, 10 to 18 seconds.\n"
-        "- actor: integer 1..24.\n"
         "- emotion: one of ['happy','sad','angry','fearful','disgust','surprised'].\n"
         "- intensity: 1 or 2.\n"
         "- expression_instruction: short actionable refinement.\n"
@@ -314,8 +313,12 @@ def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
 # =============================
 def plan_and_speak(player, game, out_name="out.wav"):
     plan = think_ai_utterance(player.get_info(game))
+    prompt = f'''Generate speech based on the provided sample and transcript. 
+    
+    <|scene_desc_start|>The audio is recorded in a quiet room with no noise. The speech is clearly audible and loud. {plan.get("expression_instruction", "")} <|scene_desc_end|>'''
     for _ in range(3):
         generate_audio(transcript = plan['content'], 
+                       system_prompt=prompt,
                     additional_messages=extract_samples(n_samples=3, 
                                                         actor=player.owner.actor, 
                                                         intensity=plan['intensity'], 

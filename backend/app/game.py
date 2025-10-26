@@ -371,6 +371,18 @@ class Game:
         _prepare_turn_order(self)
         self.night_stage = None
 
+    def get_text_transcript(self):
+        transcript_info = {'name', 'transcript', 'emotion', 'round_number'}
+        round_number = -1
+        transcript = ''
+        for clip in self.audio_clips:
+            if clip['round_number'] != round_number:
+                round_number = clip['round_number']
+                transcript += f'Round {round_number} begins:'
+            transcript += f'{clip["name"]}: {clip["transcript"]} (Emotion: {clip["emotion"]})\n'
+        transcript += 'TRANSCRIPT END\n'
+        return transcript
+
     def advance_night_stage(self) -> str:
         if self.workflow_stage != "night":
             raise HTTPException(status_code=400, detail="Night actions are not active.")
@@ -616,7 +628,8 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
         "size": size,
         "storagePath": str(file_path),
         "transcript": transcript_text,
-        "emotion": semantic_info(file_path)
+        "emotion": semantic_info(file_path),
+        "round_number": game.round_number
     }
     _store_audio_clip(game, metadata, clip_id, file_path)
     return metadata
@@ -1249,7 +1262,8 @@ async def save_audio_from_server(game_id: str, player_id: str, file: UploadFile)
         "size": len(data),
         "storagePath": str(file_path),
         "transcript": transcript,
-        "emotion": semantic_info(file_path)
+        "emotion": semantic_info(file_path),
+        "round_number": game.round_number
     }
 
     _store_audio_clip(game, metadata, clip_id, file_path)

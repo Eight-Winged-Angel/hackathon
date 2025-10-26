@@ -69,4 +69,5 @@ def text_completion(messages, model='Qwen3-32B-thinking-Hackathon', temperature=
                                     temperature=temperature,
                                     top_p=top_p,
                                    **kwargs)
-    return process_resp(resp, verbose=True)
+    print(process_resp(resp))
+    return process_resp(resp)

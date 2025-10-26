@@ -11,12 +11,13 @@ if TYPE_CHECKING:
 # Lightweight local stub for LLM calls used by AIAgent.
 def chat_completion(messages: List[dict], max_tokens: int = 80, temperature: float = 0.7, model: Optional[str] = None) -> str:
     # Deterministic short response based on last content; avoids network dependency.
-    print('RUNNING CHAT COMPLETION', messages)
     # last = next((m.get("content", "") for m in reversed(messages) if isinstance(m, dict)), "")
     # words = [w for w in (last or "").split()]
     # return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
-    return text_completion(messages)
-
+    print('RUNNING CHAT COMPLETION', messages)
+    res = text_completion(messages)
+    print('RESULT OF CHAT COMPLETION', res)
+    return res
 role_map = {'werewolf': 'mafia'}
 import json
 
@@ -36,7 +37,7 @@ class AIAgent:
         self.private_info = []
 
     def system_prompt(self) -> str:
-        base = f"You are {self.persona}, playing the social deduction game Mafia."
+        base = f"You are {self.persona}, playing the social deduction game Mafia. \n"
         base += (
             "Rules:\n"
             "- The game alternates between Day (discussion and voting) and Night (actions).\n"
@@ -105,17 +106,18 @@ class AIAgent:
         if mapped == 'mafia':
             return {'allies': [p.name for p in game.alive_werewolves()]}
         elif mapped == 'detective':
-            return {'past_detections': self.private_info}
+            print('DETECTIVE INFO')
+            return {'past_detections': self.owner.private_notes}
         return dict()
         
     def get_generic_info(self, game):
-        transcript_info = {'name', 'transcript', 'emotion'}
-        ai_transcript_info = {'name', 'message', 'emotion'}
+        transcript_info = {'name', 'transcript', 'emotion', 'round_number'}
         generic = {'system_prompt': self.system_prompt(),
                 'role_prompt': self.role_instructions(),
                 'alive_player_list': [p.name for p in game.alive_players()],
                 'events': self._event_log_excerpt(game),
-                'transcript': [{k: clip[k] for k in (transcript_info & clip.keys())} for clip in game.audio_clips]}
+                'transcript': game.get_text_transcript(),
+                'current_round_number': game.round_number}
         return generic
 
     def get_info(self, game):
@@ -131,14 +133,20 @@ class AIAgent:
         messages = [
             {"role": "system", "content": info['system_prompt']},
             {"role": "system", "content": info['role_prompt']},
+            {"role": "system", "content": f"The current round number is {info['current_round_number']}"},
             {"role": "system", "content": f"This is the global event log:"},
             {"role": "system", "content": info['events']},
             {"role": "system", "content": f"This is the list of alive players"},
-            {"role": "system", "content": info['alive_player_list']},
-            {"role": "system", "content": f"This is the transcript in JSON format"},
-            {"role": "system", "content": json.dumps(info['transcript'])}] + role_messages
+            {"role": "system", "content": ', '.join(info['alive_player_list'])},
+            {"role": "system", "content": f"This is the current transcript. Each line contains information about the speaker, what they said, and the emotion they said it in. It will be in the format: `SPEAKER`: `CONTENT` (Emotion: `EMOTION`). Round transitions will also be announced in the transcript. The transcript will end with the line TRANSCRIPT END."},
+            {"role": "system", "content": info['transcript']}] + role_messages
 
-        print('INFO MESSAGES', messages)
+        #### Merge test
+        merge_messages = '\n'.join([m['content'] for m in messages])
+        messages = [{'role': 'system', 'content': merge_messages}]
+        
+        print('GETTING INFO for', self.persona)
+        print(merge_messages)
 
         return messages
     
