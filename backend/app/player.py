@@ -40,15 +40,18 @@ class AIAgent:
         base += (
             "Rules:\n"
             "- The game alternates between Day (discussion and voting) and Night (actions).\n"
-            "- Werewolves know each other and can eliminate one player each night.\n"
+            "- Mafia know each other and can eliminate one player each night.\n"
             "- The Detective can investigate one player each night.\n"
-            "- During the Day, all players discuss and vote to eliminate one suspected werewolf.\n"
-            "- The game ends when all werewolves are eliminated or the number of werewolves equal the number of Town members."
+            "- During the Day, all players discuss and vote to eliminate one suspected Mafia.\n"
+            "- The game ends when all Mafia are eliminated or the Mafia equal the number of Town members."
         )
         base += (
             " You must think and speak as a human player in this game."
             " Be strategic, persuasive, and consistent with your assigned role."
             " Never reveal your role unless strategically beneficial."
+            " Pay attention to the logical flaw in other player's transcripts"
+            " Also pay attention to the emotional information of other player's transcripts and use it as an argument when debating"
+            " Finally pay attention to the voting event in the past event log and form logical reasoning"
         )
         return base
 
@@ -61,23 +64,30 @@ class AIAgent:
         mapped = self.get_mapped_role()
         if mapped == "mafia":
             return (
-                "You are a member of the Mafia game. Your goal is to eliminate all non-werewolf players without being discovered."
+                "You are a member of the Mafia. Your goal is to eliminate all non-mafia players without being discovered."
                 " Act innocent and persuasive during the day."
+                " Contribute to discussion during the day"
+                "subtly shift suspicion toward active players or those who survive many nights "
             )
         elif mapped == "villager":
             return (
-                "You are a Villager. You have no special powers. Your goal is to find and vote out all werewolves."
+                "You are a Villager. You have no special powers. Your goal is to find and vote out all Mafia members."
                 " During the day, discuss suspicions and vote wisely."
+                "Share reasoning, but avoid blindly following others. "
+                " Defend youself if other players attacked you before, also defend other players if you think they are your teammate"
             )
         elif mapped == "doctor":
             return (
                 "You are the Doctor. Each night, you may choose one player to save from elimination."
-                " Try to deduce who the werewolves might target."
+                " Try to deduce who the Mafia might target."
             )
         elif mapped == "detective":
             return (
-                "You are the Detective. Each night, you can investigate one player to learn if they are werewolves."
+                "You are the Detective. Each night, you can investigate one player to learn if they are Mafia."
                 " Use your findings discreetly to influence votes."
+                " Investigate players who seem manipulative or too quiet."
+                " Use your findings discreetly to influence votes."
+                " Once confident, carefully reveal findings (or hint subtly) to steer the village"
             )
         else:
             return "You are a Villager. Act accordingly."
@@ -155,7 +165,7 @@ class AIAgent:
 
     def vote(self, alive_players: List[str], game) -> str:
         choice_dict = {p.name: p for p in game.alive_players()}
-        return choice_dict[self.choice_action(game, 'Decide who you will vote to eliminate today.', list(choices_dict.keys()))].id
+        return choice_dict[self.choice_action(game, 'Decide who you will vote to eliminate today.', list(choice_dict.keys()))].id
 
     def night_action(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
         # """Perform role-specific night action (if applicable)."""
@@ -225,55 +235,3 @@ class AIPlayer(Player):
         except Exception:
             pass
         return random.choice(suspects) if suspects else None
-
-    def speak_in_text(self, game: "Game") -> str:
-        """Generate a short line using the provided prompt template, based on game events."""
-        
-        # Build history context from recent events
-        try:
-            events_text = "\n".join(e.get("text", "") for e in (game.events or []))
-        except Exception:
-            events_text = ""
-
-        # Use agent prompts and scratch reasoning
-        try:
-            system_prompt = self.agent.system_prompt()
-            role_instructions = self.agent.role_instructions()
-            reasoning = getattr(self.agent, "reason", "") or ""
-        except Exception:
-            system_prompt = f"You are {self.name}, playing Mafia."
-            role_instructions = "Speak briefly and persuasively."
-            reasoning = ""
-
-        if self.role == "werewolf":  # mafia template
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the historical events"},
-                {"role": "system", "content": events_text},
-                {"role": "system", "content": f"{self.known_allies} are your werewolf team mates."},
-                {"role": "user", "content": f"Now using that info, say a brief speech to deceive others. Only include the speech in the output."},
-            ]
-        elif self.role == "detective":
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the historical events"},
-                {"role": "system", "content": events_text},
-                {"role": "system", "content": "you know the roles of the following players"},
-                {"role": "system", "content": "\n".join(self.private_notes)},
-                {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
-            ]
-        else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "system", "content": role_instructions},
-                {"role": "system", "content": "The followings are all the historical events"},
-                {"role": "system", "content": events_text},
-                {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
-            ]
-
-        try:
-            return chat_completion(messages, max_tokens=80, temperature=0.9)
-        except Exception as e:
-            return f"(ai speak error: {e})"
