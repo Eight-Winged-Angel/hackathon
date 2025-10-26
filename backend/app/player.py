@@ -137,6 +137,8 @@ class AIAgent:
             {"role": "system", "content": self.role_instructions()},
             {"role": "system", "content": f"The followings are the past event:"},
             {"role": "system", "content": events_text},
+            {"role": "system", "content": "you know the followings are your teammates"},
+            {"role": "system", "content": self.owner.known_allies},
             {"role": "user", "content": (
                 f"These players are still alive: {alive_players}. "
                 "Decide who you will kill tonight. "
@@ -157,6 +159,8 @@ class AIAgent:
             {"role": "system", "content": self.role_instructions()},
             {"role": "system", "content": f"The followings are the past event:"},
             {"role": "system", "content": events_text},
+            {"role": "system", "content": "you know the roles of the following players"},
+            {"role": "system", "content": "\n".join(self.owner.private_notes)},
             {"role": "user", "content": (
                 f"These players are still alive: {alive_players}. "
                 "Decide who you will detect tonight. "
@@ -183,16 +187,6 @@ class Player:
         self.is_alive: bool = True
         self.private_notes: List[str] = []
         self.known_allies: List[str] = []
-
-    def choose_wolf_target(self, game: "Game") -> Optional[str]:
-        return None
-
-    def choose_detective_target(self, game: "Game") -> Optional[str]:
-        return None
-    
-    def speak_in_text(self, game):
-        raise NotImplementedError
-
 
 class HumanPlayer(Player):
     def __init__(self, name: str, *, is_host: bool = False) -> None:
@@ -227,10 +221,10 @@ class AIPlayer(Player):
         if getattr(game, "detective_id", None) != self.id or not self.is_alive:
             return None
         suspects = [p.id for p in game.alive_players() if p.id != self.id]
+    
         if not suspects:
             return None
         try:
-            self.agent.update_reason(game)
             pick = self.agent.detect(game, suspects)
             if pick in suspects:
                 return pick
@@ -264,6 +258,16 @@ class AIPlayer(Player):
                 {"role": "system", "content": "The followings are all the historical events"},
                 {"role": "system", "content": events_text},
                 {"role": "system", "content": f"{self.known_allies} are your mafia team mates."},
+                {"role": "user", "content": f"Now using that info, say a brief speech to deceive others. Only include the speech in the output."},
+            ]
+        elif self.role == "detective":
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": role_instructions},
+                {"role": "system", "content": "The followings are all the historical events"},
+                {"role": "system", "content": events_text},
+                {"role": "system", "content": "you know the roles of the following players"},
+                {"role": "system", "content": "\n".join(self.private_notes)},
                 {"role": "user", "content": f"Now using that info, say a brief speech. Only include the speech in the output."},
             ]
         else:
