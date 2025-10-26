@@ -2,6 +2,26 @@
 
 Lightweight social deduction for the browser: several civilians and one detective try to survive while one or two werewolves eliminate the town. The experience is split between a FastAPI backend and a Vite + React frontend, with support for audio uploads, automatic transcripts, and optional AI-controlled players.
 
+
+# Project Overview
+
+In our project, we worked with the RAVDESS emotional speech dataset, which includes 15 different emotions and multiple speakers. We used this dataset to voice-clone different characters with diverse emotional expressions.
+
+To fully demonstrate the strengths of the Higgs Audio V2 generation model — especially in multi-speaker and emotional dialogue — we designed an AI-driven Werewolf/Mafia game.
+
+
+# Pipeline & System Design
+
+Here’s how the pipeline works:
+    •    We use Qwen-Thinking to generate the in-game dialogue, including both the content and emotional instructions for each speaker. This emotion-rich text is then passed to Higgs V2 for high-quality audio generation.
+    •    We apply Qwen Omni, Qwen-Thinking, and the Higgs Understanding model for
+ASR (Automatic Speech Recognition) and AER (Audio Emotion Recognition),
+enabling characters to “listen” and react to what others say.
+    •    The game logic — such as how the werewolves decide their target,
+and how the detective selects someone to investigate — is also powered by Qwen models,
+making the entire game adaptive, interactive, and dynamic.
+
+
 ## Project Structure
 
 - `backend/` – FastAPI service that manages lobbies, roles, turns, audio storage, and AI helpers.
