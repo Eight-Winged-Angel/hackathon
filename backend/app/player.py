@@ -29,7 +29,6 @@ class AIAgent:
         self.owner = owner
         self.persona = persona or owner.name
         # Memory/history removed; keep a small scratchpad if needed
-        self.reason: str = ""
         self.knowledge: List[str] = []
 
     def system_prompt(self) -> str:
@@ -84,17 +83,14 @@ class AIAgent:
     # def update_memory(self) -> str:
     #     return ""
 
-    def update_reason(self, game: "Game"):
-        self.reason = str(game.events)
-
     # History updates removed; rely on game.events for context.
     # def Update(self, round_index: int, info: List[Any], event_type: str, semantic: Optional[str] = None) -> None:
     #     return
 
-    def _event_log_excerpt(self, game: "Game", limit: int = 8) -> str:
+    def _event_log_excerpt(self, game: "Game") -> str:
         try:
             # Use most recent events as context
-            lines = [e.get("text", "") for e in (game.events or [])][-limit:]
+            lines = [e.get("text", "") for e in (game.events or [])]
             return "\n".join(lines)
         except Exception:
             return ""
@@ -111,7 +107,7 @@ class AIAgent:
             {"role": "system", "content": self.role_instructions()},
             {"role": "system", "content": "Recent events:"},
             {"role": "system", "content": events_text},
-            {"role": "user",  "content": f"Generate some discussion to the group. Do not include anything else in the output"},
+            {"role": "user", "content": f"Speak to the group." },
         ]
         try:
             return chat_completion(messages, max_tokens=80, temperature=0.9)
@@ -119,10 +115,12 @@ class AIAgent:
             return f"(failed to discuss: {e})"
 
     def vote(self, alive_players: List[str], game: Optional["Game"] = None) -> str:
+        events_text = self._event_log_excerpt(game) if game else ""
         messages = [
             {"role": "system", "content": self.system_prompt()},
             {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": f"The following is the event log in JSON format: {self.reason}"},
+            {"role": "system", "content": f"The followings are the past event:"},
+            {"role": "system", "content": events_text},
             {"role": "user", "content": (
                 f"These players are still alive: {alive_players}. "
                 "Decide who you will vote to eliminate today. "
@@ -137,22 +135,43 @@ class AIAgent:
 
     def night_action(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
         """Perform role-specific night action (if applicable)."""
-        # Simple heuristic: avoid known allies if werewolf
-        choices = [pid for pid in (alive_players or []) if pid != self.owner.id]
+        events_text = self._event_log_excerpt(game) if game else ""
+        messages = [
+            {"role": "system", "content": self.system_prompt()},
+            {"role": "system", "content": self.role_instructions()},
+            {"role": "system", "content": f"The followings are the past event:"},
+            {"role": "system", "content": events_text},
+            {"role": "user", "content": (
+                f"These players are still alive: {alive_players}. "
+                "Decide who you will kill tonight. "
+                "Respond ONLY with the player ID (integer) of your choice."
+            )}
+        ]
         try:
-            if getattr(self.owner, "role", None) == "werewolf" and game is not None:
-                ally_names = set(self.owner.known_allies or [])
-                if ally_names:
-                    name_by_id = {p.id: p.name for p in game.alive_players()}
-                    choices = [pid for pid in choices if name_by_id.get(pid) not in ally_names]
+            kill = chat_completion(messages, max_tokens=10, temperature=0.7)
+            return kill.strip()
         except Exception:
-            pass
-        return random.choice(choices) if choices else None
+            return ""
 
     def detect(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
-        # Pick a random non-self suspect
-        choices = [pid for pid in (alive_players or []) if pid != self.owner.id]
-        return random.choice(choices) if choices else None
+        """Perform role-specific night action (if applicable)."""
+        events_text = self._event_log_excerpt(game) if game else ""
+        messages = [
+            {"role": "system", "content": self.system_prompt()},
+            {"role": "system", "content": self.role_instructions()},
+            {"role": "system", "content": f"The followings are the past event:"},
+            {"role": "system", "content": events_text},
+            {"role": "user", "content": (
+                f"These players are still alive: {alive_players}. "
+                "Decide who you will detect tonight. "
+                "Respond ONLY with the player ID (integer) of your choice."
+            )}
+        ]
+        try:
+            detect = chat_completion(messages, max_tokens=10, temperature=0.7)
+            return detect.strip()
+        except Exception:
+            return ""
 
     def detect_result(self, player_num: str, role: str) -> None:
         self.knowledge.append(f"Player{player_num} is {role}")
@@ -201,7 +220,6 @@ class AIPlayer(Player):
         if not candidates:
             return None
         try:
-            self.agent.update_reason(game)
             pick = self.agent.night_action(game, candidates)
             if pick in candidates:
                 return pick
@@ -229,13 +247,12 @@ class AIPlayer(Player):
         
         # Build history context from recent events
         try:
-            events_text = "\n".join(e.get("text", "") for e in (game.events or [])[-10:])
+            events_text = "\n".join(e.get("text", "") for e in (game.events or []))
         except Exception:
             events_text = ""
 
         # Use agent prompts and scratch reasoning
         try:
-            self.agent.update_reason(game)
             system_prompt = self.agent.system_prompt()
             role_instructions = self.agent.role_instructions()
             reasoning = getattr(self.agent, "reason", "") or ""
