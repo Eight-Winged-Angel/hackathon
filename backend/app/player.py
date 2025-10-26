@@ -216,7 +216,6 @@ class AIPlayer(Player):
         if not candidates:
             return None
         try:
-            self.agent.update_reason(game)
             pick = self.agent.night_action(game, candidates)
             if pick in candidates:
                 return pick
@@ -244,13 +243,12 @@ class AIPlayer(Player):
         
         # Build history context from recent events
         try:
-            events_text = "\n".join(e.get("text", "") for e in (game.events or [])[-10:])
+            events_text = "\n".join(e.get("text", "") for e in (game.events or []))
         except Exception:
             events_text = ""
 
         # Use agent prompts and scratch reasoning
         try:
-            self.agent.update_reason(game)
             system_prompt = self.agent.system_prompt()
             role_instructions = self.agent.role_instructions()
             reasoning = getattr(self.agent, "reason", "") or ""
