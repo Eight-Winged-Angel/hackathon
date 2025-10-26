@@ -18,6 +18,42 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from backend.app.player import Player, HumanPlayer, AIPlayer
 
+#ADD: ai speaker
+from backend.app.ai_speaker import plan_and_speak
+
+def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int = 30) -> str:
+    """把最近的事件与聊天，拼接成适合 LLM/TTS 的历史文本。避免泄露身份。"""
+    lines = []
+
+    # 事件（按时间）
+    events = (game.events or [])[-max_events:]
+    if events:
+        lines.append("=== Events ===")
+        for e in events:
+            t = e.get("text", "")
+            ph = e.get("phase", "") or ""
+            if ph:
+                lines.append(f"[{ph}] {t}")
+            else:
+                lines.append(t)
+
+    # 聊天（按时间）
+    chats = (game.chat_messages or [])[-max_chats:]
+    if chats:
+        lines.append("\n=== Chat ===")
+        for c in chats:
+            nm = c.get("name", "Unknown")
+            tx = c.get("text", "")
+            lines.append(f"{nm}: {tx}")
+
+    # 公共状态（不要暴露隐藏身份）
+    lines.append("\n=== Public State ===")
+    lines.append(f"Round: {game.round_number}, Stage: {game.workflow_stage or 'unknown'}")
+    alive = [p.name for p in game.alive_players()]
+    lines.append(f"Alive: {', '.join(alive) if alive else '(none)'}")
+
+    return "\n".join(lines).strip()
+# END ADD
 
 def _generate_join_code(length: int = 4) -> str:
     """Generate an uppercase join code that is easy to share."""
@@ -482,52 +518,57 @@ def _store_audio_clip(game: Game, metadata: Dict[str, Any], clip_id: str, path: 
     game.audio_files[clip_id] = path
     _prune_audio(game)
 
-# TODO AI AUDIO
-def _generate_ai_audio_clip(game: Game, ai_player: Player, message_text: str) -> Dict[str, Any]:
+# ADD: generate AI audio clip, substitute duck for TTS service
+def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]:
+    """使用 ai_speaker.plan_and_speak 基于游戏历史直接生成 AI 的人声 WAV，并存储为音频片段。"""
     clip_id = str(uuid.uuid4())
-    # audio_dir = AUDIO_STORAGE_DIR / game.id
-    # TODO change
-    audio_dir = AUDIO_STORAGE_DIR / "audio_sample"
+
+    # 每个游戏独立的音频目录
+    audio_dir = AUDIO_STORAGE_DIR / game.id
     audio_dir.mkdir(parents=True, exist_ok=True)
-    # TODO REMOVE
-    # filename = "nothing-beats-a-jet2-holiday_IeBO1Mr.wav"
-    filename = "duck-quack-112941.wav"
+
+    # 输出文件名就用 clip_id，确保唯一
+    filename = f"{clip_id}.wav"
     file_path = audio_dir / filename
-    
-    # filename = f"{clip_id}.wav"
-    # file_path = audio_dir / filename
 
-    # sample_rate = 16000
-    # duration = random.uniform(0.8, 1.4)
-    # total_frames = int(sample_rate * duration)
-    # freq = random.randint(180, 420)
-    # amplitude = 18000
+    # 组装历史 → 生成(计划+音频)
+    try:
+        history_text = _compose_game_history(game, max_events=40, max_chats=30)
+        # 这里会把音频直接写入 file_path
+        plan = plan_and_speak(history_text, out_name=str(file_path))
+        transcript_text = str(plan.get("content", "")).strip() or "..."
+    except Exception as e:
+        # 兜底：失败时写一个极短的空WAV（不理想，但不会让前端炸掉）
+        transcript_text = "(TTS failed; empty audio fallback)"
+        try:
+            with wave.open(str(file_path), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(b"\x00" * 3200)  # 100ms 静音
+        except Exception:
+            pass
 
-    # with wave.open(file_path, "wb") as wav_file:
-    #     wav_file.setnchannels(1)
-    #     wav_file.setsampwidth(2)
-    #     wav_file.setframerate(sample_rate)
-    #     frames = bytearray()
-    #     for idx in range(total_frames):
-    #       value = int(amplitude * math.sin(2 * math.pi * freq * (idx / sample_rate)))
-    #       frames.extend(struct.pack("<h", value))
-    #     wav_file.writeframes(bytes(frames))
+    # 读字节拿 size
+    try:
+        data = file_path.read_bytes()
+        size = len(data)
+    except Exception:
+        size = 0
 
-    data = file_path.read_bytes()
-    transcript = message_text
+    # 组织元数据并入库
     metadata = {
         "clipId": clip_id,
         "playerId": ai_player.id,
         "name": ai_player.name,
         "filename": filename,
         "contentType": "audio/wav",
-        "size": len(data),
+        "size": size,
         "storagePath": str(file_path),
-        "transcript": transcript,
+        "transcript": transcript_text,
     }
     _store_audio_clip(game, metadata, clip_id, file_path)
     return metadata
-
 
 games_by_id: Dict[str, Game] = {}
 games_by_code: Dict[str, Game] = {}
@@ -847,7 +888,7 @@ def resolve_night(game_id: str, player_id: str) -> GameStateResponse:
     """Maintained for backward compatibility; delegates to advance_night."""
     return advance_night(game_id, player_id)
 
-
+# modify
 def trigger_speech(
     game_id: str,
     requester_player_id: str,
@@ -874,15 +915,29 @@ def trigger_speech(
             status_code=403, detail="Only the host or the speaker may trigger speech."
         )
 
-    # TODO currently designed for AI only
+    # 仅允许 AI 触发 “AI 语音”
     if not speaker.is_ai:
         raise HTTPException(status_code=400, detail="AI speech can only be triggered for AI players.")
 
-    # Let the AI player generate a line using the in-game context
+    # ✅ 新逻辑：直接调用 TTS（基于游戏历史），得到音频 + 文本
     try:
-        message_text = speaker.speak_in_text(game) if hasattr(speaker, "speak_in_text") else random.choice(AI_PHRASES)
-    except Exception:
-        message_text = random.choice(AI_PHRASES)
+        audio_meta = _generate_ai_audio_clip(game, speaker)
+        message_text = audio_meta.get("transcript") or ""
+    except Exception as e:
+        # 兜底（不会抛出到前端）
+        message_text = f"(ai speech error: {e})"
+        audio_meta = {
+            "clipId": str(uuid.uuid4()),
+            "playerId": speaker.id,
+            "name": speaker.name,
+            "filename": "",
+            "contentType": "audio/wav",
+            "size": 0,
+            "storagePath": None,
+            "transcript": message_text,
+        }
+
+    # 记录本次 AI 文本（UI 右侧对话气泡）
     entry = {
         "aiPlayerId": speaker.id,
         "name": speaker.name,
@@ -893,13 +948,11 @@ def trigger_speech(
     if len(game.ai_messages) > 20:
         game.ai_messages = game.ai_messages[-20:]
 
-    audio_meta = _generate_ai_audio_clip(game, speaker, message_text)
-
     return AISpeakResponse(
         message=AISpeechLog(**entry),
         audioClip=AudioClipInfo(**audio_meta),
     )
-
+# modify end
 
 def finish_round(game_id: str, player_id: str) -> GameStateResponse:
     game = _get_game_or_404(game_id)
