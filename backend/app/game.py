@@ -615,7 +615,7 @@ def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]
         "size": size,
         "storagePath": str(file_path),
         "transcript": transcript_text,
-        "emotion": semantic_info(filename)
+        "emotion": semantic_info(file_path)
     }
     _store_audio_clip(game, metadata, clip_id, file_path)
     return metadata

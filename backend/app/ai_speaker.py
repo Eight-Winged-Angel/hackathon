@@ -336,6 +336,7 @@ def plan_and_speak(player, game, out_name="out.wav"):
     return plan
 
 def semantic_info(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
+    print('SEMANTIC AUDIO', audio)
     messages = [
             {"role":"system","content":"You are a helpful assistant."},
             {"role":"user","content":[
