@@ -40,10 +40,10 @@ class AIAgent:
         base += (
             "Rules:\n"
             "- The game alternates between Day (discussion and voting) and Night (actions).\n"
-            "- Mafia know each other and can eliminate one player each night.\n"
+            "- Werewolves know each other and can eliminate one player each night.\n"
             "- The Detective can investigate one player each night.\n"
-            "- During the Day, all players discuss and vote to eliminate one suspected Mafia.\n"
-            "- The game ends when all Mafia are eliminated or the Mafia equal the number of Town members."
+            "- During the Day, all players discuss and vote to eliminate one suspected werewolf.\n"
+            "- The game ends when all werewolves are eliminated or the number of werewolves equal the number of Town members."
         )
         base += (
             " You must think and speak as a human player in this game."
@@ -61,22 +61,22 @@ class AIAgent:
         mapped = self.get_mapped_role()
         if mapped == "mafia":
             return (
-                "You are a member of the Mafia. Your goal is to eliminate all non-mafia players without being discovered."
+                "You are a member of the Mafia game. Your goal is to eliminate all non-werewolf players without being discovered."
                 " Act innocent and persuasive during the day."
             )
         elif mapped == "villager":
             return (
-                "You are a Villager. You have no special powers. Your goal is to find and vote out all Mafia members."
+                "You are a Villager. You have no special powers. Your goal is to find and vote out all werewolves."
                 " During the day, discuss suspicions and vote wisely."
             )
         elif mapped == "doctor":
             return (
                 "You are the Doctor. Each night, you may choose one player to save from elimination."
-                " Try to deduce who the Mafia might target."
+                " Try to deduce who the werewolves might target."
             )
         elif mapped == "detective":
             return (
-                "You are the Detective. Each night, you can investigate one player to learn if they are Mafia."
+                "You are the Detective. Each night, you can investigate one player to learn if they are werewolves."
                 " Use your findings discreetly to influence votes."
             )
         else:
@@ -251,7 +251,7 @@ class AIPlayer(Player):
                 {"role": "system", "content": role_instructions},
                 {"role": "system", "content": "The followings are all the historical events"},
                 {"role": "system", "content": events_text},
-                {"role": "system", "content": f"{self.known_allies} are your mafia team mates."},
+                {"role": "system", "content": f"{self.known_allies} are your werewolf team mates."},
                 {"role": "user", "content": f"Now using that info, say a brief speech to deceive others. Only include the speech in the output."},
             ]
         elif self.role == "detective":

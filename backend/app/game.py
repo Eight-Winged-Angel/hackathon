@@ -22,6 +22,40 @@ from backend.app.player import Player, HumanPlayer, AIPlayer
 from backend.app.ai_speaker import plan_and_speak, asr
 
 
+NAMES = [
+    "Evelyn Cross",
+    "Marco Vance",
+    "Serena Holt",
+    "Isaac Dorne",
+    "Clara Finch",
+    "Theo Maren",
+    "Lila Graves",
+    "Dominic Reid",
+    "Mira Kessler",
+    "Owen Locke",
+    "Agent Astra-9",
+    "Node Lyra-3",
+    "Unit Echo-7",
+    "AI Varen-12",
+    "Sentinel-5",
+    "Cipher-02",
+    "Vega-Delta",
+    "Orion-8X",
+    "Sigma-13",
+    "Halcyon-4",
+    "Fenra Vale",
+    "Kael Nighthorn",
+    "Elara Wynn",
+    "Draven Thorne",
+    "Lune Ashcroft",
+    "Corin Hollow",
+    "Nyx Rowan",
+    "Vira Skye",
+    "Rowan Fenn",
+    "Silas Mare",
+]
+
+
 def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int = 30) -> str:
     """把最近的事件与聊天拼成历史文本，不暴露隐藏身份。用于 LLM 思考与 TTS。"""
     lines = []
@@ -733,7 +767,7 @@ def add_ai_player(game_id: str, host_player_id: str, ai_name: Optional[str]) -> 
     base_name = (ai_name or "").strip()
     if not base_name:
         ai_count = sum(1 for p in game.players.values() if p.is_ai)
-        base_name = f"AI Agent {ai_count + 1}"
+        base_name = NAMES[ai_count]
 
     existing_names = {p.name for p in game.players.values()}
     candidate = base_name
