@@ -132,29 +132,40 @@ class AIAgent:
 
         return messages
     
-    def choice_action(self, prompt, choices, max_tokens=20, temperature=0.2):
-        info_messages = self.get_info()
-        messages = info_messages + [{"role": "user", "content": (
-                f"{prompt}\n"
-                f"Output a choice from the list: {', '.join(choices)}. ONLY output your choice."
-            )}
-        ]
+    def choice_action(self, game, prompt, choices, max_tokens=20, temperature=0.2):
         try:
-            return chat_completion(info_messages, max_tokens=max_tokens, temperature=temperature).strip()
+            print('CHOICE ACTION', prompt, choices)
+            print('GAME', game)
+            info_messages = self.get_info(game)
+            print('INFO MESSAGES', info_messages)
+            messages = info_messages + [{"role": "user", "content": (
+                    f"{prompt}\n"
+                    f"Output a choice from the list: {', '.join(choices)}. ONLY output your choice."
+                )}
+            ]
+        except Exception as e:
+            print(e)
+        try:
+            res = chat_completion(messages, max_tokens=max_tokens, temperature=temperature).strip()
+            print('RES', res)
+            return res
         except Exception as e:
             print(e)
             return ""
 
-    def vote(self, alive_players: List[str], game: Optional["Game"] = None) -> str:
-        return self.choice_action('Decide who you will vote to eliminate today.', [p.name for p in game.alive_players()])
+    def vote(self, alive_players: List[str], game) -> str:
+        choice_dict = {p.name: p for p in game.alive_players()}
+        return choice_dict[self.choice_action(game, 'Decide who you will vote to eliminate today.', list(choices_dict.keys()))].id
 
     def night_action(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
-        """Perform role-specific night action (if applicable)."""
-        return self.choice_action('Decide who you will kill tonight.', [p.name for p in game.alive_players()])
+        # """Perform role-specific night action (if applicable)."""
+        choice_dict = {p.name: p for p in game.alive_players()}
+        return choice_dict[self.choice_action(game, 'Decide who you will kill tonight.', list(choice_dict.keys()))].id
     
     def detect(self, game: Optional["Game"], alive_players: List[str]) -> Optional[str]:
         """Perform role-specific night action (if applicable)."""
-        return self.choice_action('Decide who you will detect tonight.', [p.name for p in game.alive_players()])
+        choice_dict = {p.name: p for p in game.alive_players()}
+        return choice_dict[self.choice_action(game, 'Decide who you will detect tonight.', list(choice_dict.keys()))].id
     
     def detect_result(self, player_num: str, role: str) -> None:
         self.private_info.append(f"Player{player_num} is {role}")

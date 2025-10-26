@@ -1122,7 +1122,7 @@ def trigger_ai_votes(game_id: str, player_id: str) -> GameStateResponse:
                 try:
                     if isinstance(ai, AIPlayer) and hasattr(ai, "agent"):
                         # Pass the full game for event/context-aware voting
-                        pick = ai.agent.vote(list(candidates), game)
+                        pick = ai.agent.vote(list(candidates), game=game)
                         if pick in candidates:
                             target_id = pick
                         else:
