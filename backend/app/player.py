@@ -99,6 +99,10 @@ class AIAgent:
         except Exception:
             return ""
 
+    def get_relevant_info(self, game):
+        events_text = self._event_log_excerpt(game) if game else ""
+        return self.system_prompt(), self.role_instructions(), events_text
+
     def discuss(self, game: Optional["Game"] = None) -> str:
         """Generate a discussion statement (uses game.events as context if provided)."""
         events_text = self._event_log_excerpt(game) if game else ""
