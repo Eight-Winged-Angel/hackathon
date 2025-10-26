@@ -169,7 +169,7 @@ def to_audio(path, min_vol=None, boost=0):
     res = {'type': "input_audio", "input_audio": {'data': b64(temp_name), 'format': 'wav'}}
     Path(temp_name).unlink()
 
-    return {'type': "input_audio", "input_audio": {'data': b64(path), 'format': 'wav'}}
+    return res
 
 import re
 def process_resp(resp):
