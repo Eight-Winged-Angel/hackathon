@@ -55,7 +55,7 @@ def _extract_json(text: str) -> Dict[str, Any]:
 
     raise ValueError("Failed to parse JSON from model output")
 
-def think_ai_utterance(system_prompt, role_instructions, game_history_text: str) -> Dict[str, Any]:
+def think_ai_utterance(game_history_text: str) -> Dict[str, Any]:
     schema_hint = (
         "At the END of your answer, output a JSON object wrapped in a fenced code block:\n"
         "```json\n"
@@ -71,8 +71,7 @@ def think_ai_utterance(system_prompt, role_instructions, game_history_text: str)
     )
 
     system_prompt = (
-        f"{system_prompt}\n"
-        f"{role_instructions}\n"
+        "You are a planner that generates a speaking plan for a player in a Werewolf game.\n"
         "You may include brief hidden reasoning **before** the final JSON result, outside the JSON block.\n"
         "The **final** part of your message must be exactly one JSON object, in a fenced ```json code block.\n"
         "Constraints:\n"
@@ -84,9 +83,6 @@ def think_ai_utterance(system_prompt, role_instructions, game_history_text: str)
     )
 
     user_prompt = f"Game history:\n{game_history_text}\n\n{schema_hint}"
-
-    print('SYSTEM PROMPT', system_prompt)
-    print('USER PROMPT', user_prompt)
 
     # Retry up to 3 times if JSON parse fails
     for attempt in range(3):
@@ -109,6 +105,7 @@ def think_ai_utterance(system_prompt, role_instructions, game_history_text: str)
         raw = resp.choices[0].message.content
         try:
             plan = _extract_json(raw)
+            plan["_raw_model_output"] = raw 
             return _validate_plan(plan)
         except Exception:
             print(f"⚠ JSON parse failed, retry {attempt + 1}/3...")
@@ -116,6 +113,7 @@ def think_ai_utterance(system_prompt, role_instructions, game_history_text: str)
     # Fallback after all retries
     print("❌ JSON parse failed after 3 retries → fallback")
     plan = {"content": "Let’s not rush. Someone give us real info.", "actor": 1, "emotion": "neutral", "intensity": 1}
+    plan["_raw_model_output"] = "(fallback: JSON parse failed 3x)" 
     return _validate_plan(plan)
 
 
@@ -158,6 +156,9 @@ def _measure_dbfs(audio_bytes: bytes) -> float:
     return seg.dBFS
 # --- 工具函数结束 ---
 
+
+
+
 def b64(path):
     return base64.b64encode(open(path, "rb").read()).decode("utf-8")
 def to_audio(path, vol_boost=None):
@@ -193,15 +194,14 @@ def upload_temp(f):
 
 from pathlib import Path
 import pandas as pd
-import kagglehub
-
-# Download latest version
-path = Path(kagglehub.dataset_download("uwrfkaggler/ravdess-emotional-speech-audio"))
-fs = path.glob('**/*.wav')
+fs = Path(r"C:\Users\19324\.cache\kagglehub\datasets\uwrfkaggler\ravdess-emotional-speech-audio").glob('**/*.wav')
 df = pd.DataFrame({'f': [str(f) for f in fs]})
+
 df['stem'] = df.f.str.extract(r'.*\\(.*).wav')
 df2 = pd.DataFrame(df.stem.str.split('-').tolist(), columns=['modality', 'vocal', 'emotion', 'intensity', 'statement', 'repetition', 'actor']).astype(int)
 df_total = df.merge(df2, left_index=True, right_index=True)
+emote_1 = df_total[(df_total.emotion != 1) & (df_total.actor == 1)]
+neutral_1 = df_total[(df_total.emotion == 1) & (df_total.actor == 1)]
 statements = ["Kids are talking by the door", "Dogs are sitting by the door"]
 emotions = ['neutral', 'calm', 'happy', 'sad', 'angry', 'fearful', 'disgust', 'surprised']
 
@@ -351,25 +351,6 @@ def generate_emotion(
     return out_name
 
 
-# =============================
-# ✅ 串联：思考 → 发声
-# =============================
-def plan_and_speak(system_prompt, role_instructions, game_history: str, out_name="out.wav"):
-    plan = think_ai_utterance(system_prompt, role_instructions, game_history)
-    print('PLAN', plan)
-    generate_emotion(
-        transcript=plan["content"],
-        emotion=plan["emotion"],
-        actor=plan["actor"],
-        intensity=plan["intensity"],
-        expression_instruction=plan.get("expression_instruction",""),
-        out_name=out_name
-    )
-<<<<<<< HEAD
-    return plan
-=======
-    return plan
-
 def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
     messages = [
             {"role":"system","content":"You are a helpful assistant."},
@@ -387,4 +368,19 @@ def asr(audio, verbose=False, max_tokens=4096, temperature=0.2, top_p=0.95):
         stream=False,
     )   
     return process_resp(resp)
->>>>>>> 7f86eedf75fe3798b4c897f45eca6446a7074065
+
+
+# =============================
+# ✅ 串联：思考 → 发声
+# =============================
+def plan_and_speak(game_history: str, out_name="out.wav"):
+    plan = think_ai_utterance(game_history)
+    generate_emotion(
+        transcript=plan["content"],
+        emotion=plan["emotion"],
+        actor=plan["actor"],
+        intensity=plan["intensity"],
+        expression_instruction=plan.get("expression_instruction",""),
+        out_name=out_name
+    )
+    return plan
