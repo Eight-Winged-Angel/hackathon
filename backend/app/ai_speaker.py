@@ -196,7 +196,7 @@ import pandas as pd
 import kagglehub
 
 # Download latest version
-path = Path(kagglehub.dataset_download("uwrfkaggler/ravdess-emotional-speech-audio"))
+path = Path(kagglehub.dataset_download("uwrfkaggler/ravdess-emotional-speech-audio")) 
 fs = path.glob('**/*.wav')
 df = pd.DataFrame({'f': [str(f) for f in fs]})
 df['stem'] = df.f.str.extract(r'.*\\(.*).wav')
