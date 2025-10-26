@@ -352,10 +352,11 @@ class Game:
 
         if observed:
             # Do not reveal alignment/role in inspection results
-            note = f"You inspected {observed.name}."
+            identity = "innocent" if observed.role != "werewolf" else "werewolf"
+            note = f"You inspected {observed.name}, which appears to be {identity}"
             detective.private_notes.append(note)
-            if len(detective.private_notes) > 5:
-                detective.private_notes = detective.private_notes[-5:]
+            # if len(detective.private_notes) > 5:
+            #     detective.private_notes = detective.private_notes[-5:]
 
         self.detective_target = None
 

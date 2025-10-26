@@ -7,6 +7,9 @@
 
 body {
   margin: 0;
+  /* Moonlit Mafia background */
+  background: #0f172a url('./mafia_bg.webp') center / cover no-repeat fixed;
+  min-height: 100vh;
 }
 
 #root {
