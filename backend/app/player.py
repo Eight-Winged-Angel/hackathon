@@ -17,6 +17,8 @@ def chat_completion(messages: List[dict], max_tokens: int = 80, temperature: flo
     # return (" ".join(words[: min(20, len(words))]) or "thinking...").strip()
     return text_completion(messages)
 
+role_map = {'werewolf': 'mafia'}
+
 class AIAgent:
     """Lightweight agent bound to an AIPlayer.
 
@@ -30,6 +32,7 @@ class AIAgent:
         self.persona = persona or owner.name
         # Memory/history removed; keep a small scratchpad if needed
         self.knowledge: List[str] = []
+        self.private_info = []
 
     def system_prompt(self) -> str:
         base = f"You are {self.persona}, playing the social deduction game Mafia."
@@ -48,15 +51,13 @@ class AIAgent:
         )
         return base
 
+    def get_mapped_role(self):
+        role = getattr(self.owner, "role", None)
+        return role_map.get(role, role)
+
     def role_instructions(self) -> str:
         # Map game role to instruction flavor; avoid duplicating state here
-        role = getattr(self.owner, "role", None)
-        if role == "werewolf":
-            mapped = "mafia"
-        elif role == "detective":
-            mapped = "detective"
-        else:
-            mapped = "villager"
+        mapped = self.get_mapped_role()
         if mapped == "mafia":
             return (
                 "You are a member of the Mafia. Your goal is to eliminate all non-mafia players without being discovered."
@@ -79,14 +80,7 @@ class AIAgent:
             )
         else:
             return "You are a Villager. Act accordingly."
-    # Memory/history removed; previous summarization step skipped.
-    # def update_memory(self) -> str:
-    #     return ""
-
-    # History updates removed; rely on game.events for context.
-    # def Update(self, round_index: int, info: List[Any], event_type: str, semantic: Optional[str] = None) -> None:
-    #     return
-
+    
     def _event_log_excerpt(self, game: "Game") -> str:
         try:
             # Use most recent events as context
@@ -95,24 +89,26 @@ class AIAgent:
         except Exception:
             return ""
 
+    def get_role_specific_info(self, game):
+        mapped = self.get_mapped_role()
+        if mapped == 'mafia':
+            return {'allies': [p.name for p in game.alive_werewolves()]}
+        elif mapped == 'detective':
+            return {'private_info': self.private_info}
+        return dict()
+        
     def get_relevant_info(self, game):
-        events_text = self._event_log_excerpt(game) if game else ""
-        return self.system_prompt(), self.role_instructions(), events_text
+        transcript_info = {'name', 'transcript', 'emotion'}
+        generic = {'system_prompt': self.system_prompt(),
+                'role_prompt': self.role_instructions(),
+                'alive_player_list': [p.name for p in game.alive_players()],
+                'events': self._event_log_excerpt(game),
+                'transcript': [{k: clip[k] for k in (transcript_info & clip.keys())} for clip in game.audio_clips]}
+        roles = self.get_role_specific_info(game)
+        return generic | roles
 
-    def discuss(self, game: Optional["Game"] = None) -> str:
-        """Generate a discussion statement (uses game.events as context if provided)."""
-        events_text = self._event_log_excerpt(game) if game else ""
-        messages = [
-            {"role": "system", "content": self.system_prompt()},
-            {"role": "system", "content": self.role_instructions()},
-            {"role": "system", "content": "Recent events:"},
-            {"role": "system", "content": events_text},
-            {"role": "user", "content": f"Speak to the group." },
-        ]
-        try:
-            return chat_completion(messages, max_tokens=80, temperature=0.9)
-        except Exception as e:
-            return f"(failed to discuss: {e})"
+    def choice_action(self, prompt, choices):
+        pass
 
     def vote(self, alive_players: List[str], game: Optional["Game"] = None) -> str:
         events_text = self._event_log_excerpt(game) if game else ""
