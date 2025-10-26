@@ -21,11 +21,12 @@ from backend.app.player import Player, HumanPlayer, AIPlayer
 #ADD: ai speaker
 from backend.app.ai_speaker import plan_and_speak
 
+
 def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int = 30) -> str:
-    """把最近的事件与聊天，拼接成适合 LLM/TTS 的历史文本。避免泄露身份。"""
+    """把最近的事件与聊天拼成历史文本，不暴露隐藏身份。用于 LLM 思考与 TTS。"""
     lines = []
 
-    # 事件（按时间）
+    # 事件
     events = (game.events or [])[-max_events:]
     if events:
         lines.append("=== Events ===")
@@ -37,7 +38,7 @@ def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int 
             else:
                 lines.append(t)
 
-    # 聊天（按时间）
+    # 聊天
     chats = (game.chat_messages or [])[-max_chats:]
     if chats:
         lines.append("\n=== Chat ===")
@@ -46,7 +47,7 @@ def _compose_game_history(game: "Game", *, max_events: int = 40, max_chats: int 
             tx = c.get("text", "")
             lines.append(f"{nm}: {tx}")
 
-    # 公共状态（不要暴露隐藏身份）
+    # 公共状态
     lines.append("\n=== Public State ===")
     lines.append(f"Round: {game.round_number}, Stage: {game.workflow_stage or 'unknown'}")
     alive = [p.name for p in game.alive_players()]
@@ -59,6 +60,14 @@ def _generate_join_code(length: int = 4) -> str:
     """Generate an uppercase join code that is easy to share."""
     return "".join(random.choices(string.ascii_uppercase, k=length))
 
+#added
+class DebugInfo(BaseModel):
+    enabled: bool
+    history: Optional[str] = None
+    thinkRaw: Optional[str] = None
+
+DebugInfo.model_rebuild()
+#end added  
 
 class PlayerPublic(BaseModel):
     playerId: str
@@ -206,6 +215,10 @@ class Game:
         self.votes: Dict[str, str] = {}
         self.night_stage: Optional[str] = None
         self.last_night_kill_id: Optional[str] = None
+        self.debug_panel_enabled: bool = True          # 是否开放调试窗口
+        self.last_think_output: Optional[str] = None   # 最近一次 think model 的原始输出
+        self.last_history_text: Optional[str] = None   # 最近一次合成给 think 的历史文本
+
 
     @property
     def player_list(self) -> List[PlayerPublic]:
@@ -520,43 +533,42 @@ def _store_audio_clip(game: Game, metadata: Dict[str, Any], clip_id: str, path: 
 
 # ADD: generate AI audio clip, substitute duck for TTS service
 def _generate_ai_audio_clip(game: "Game", ai_player: "Player") -> Dict[str, Any]:
-    """使用 ai_speaker.plan_and_speak 基于游戏历史直接生成 AI 的人声 WAV，并存储为音频片段。"""
+    """使用 ai_speaker.plan_and_speak 基于游戏历史生成 AI 人声 WAV，并存储为音频片段。
+       同时记录最近一次 history 与 think 原始输出到 Game。"""
     clip_id = str(uuid.uuid4())
 
-    # 每个游戏独立的音频目录
+    # 独立目录
     audio_dir = AUDIO_STORAGE_DIR / game.id
     audio_dir.mkdir(parents=True, exist_ok=True)
 
-    # 输出文件名就用 clip_id，确保唯一
     filename = f"{clip_id}.wav"
     file_path = audio_dir / filename
 
-    # 组装历史 → 生成(计划+音频)
+    transcript_text = "..."
     try:
         history_text = _compose_game_history(game, max_events=40, max_chats=30)
-        # 这里会把音频直接写入 file_path
+        game.last_history_text = history_text  # <<< 记录历史
+
         plan = plan_and_speak(history_text, out_name=str(file_path))
         transcript_text = str(plan.get("content", "")).strip() or "..."
+        game.last_think_output = str(plan.get("_raw_model_output", "")) or "(empty)"  # <<< 记录 think 原始输出
     except Exception as e:
-        # 兜底：失败时写一个极短的空WAV（不理想，但不会让前端炸掉）
-        transcript_text = "(TTS failed; empty audio fallback)"
+        game.last_think_output = f"(TTS/plan failed: {e})"
+        # 兜底：100ms 静音，避免前端报错
         try:
             with wave.open(str(file_path), "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(16000)
-                wf.writeframes(b"\x00" * 3200)  # 100ms 静音
+                wf.writeframes(b"\x00" * 3200)
         except Exception:
             pass
 
-    # 读字节拿 size
     try:
-        data = file_path.read_bytes()
-        size = len(data)
+        size = (file_path.stat().st_size if file_path.exists() else 0)
     except Exception:
         size = 0
 
-    # 组织元数据并入库
     metadata = {
         "clipId": clip_id,
         "playerId": ai_player.id,
@@ -915,16 +927,14 @@ def trigger_speech(
             status_code=403, detail="Only the host or the speaker may trigger speech."
         )
 
-    # 仅允许 AI 触发 “AI 语音”
     if not speaker.is_ai:
         raise HTTPException(status_code=400, detail="AI speech can only be triggered for AI players.")
 
-    # ✅ 新逻辑：直接调用 TTS（基于游戏历史），得到音频 + 文本
+    # 直接合成语音（内部会记录 last_history_text / last_think_output）
     try:
         audio_meta = _generate_ai_audio_clip(game, speaker)
         message_text = audio_meta.get("transcript") or ""
     except Exception as e:
-        # 兜底（不会抛出到前端）
         message_text = f"(ai speech error: {e})"
         audio_meta = {
             "clipId": str(uuid.uuid4()),
@@ -937,7 +947,6 @@ def trigger_speech(
             "transcript": message_text,
         }
 
-    # 记录本次 AI 文本（UI 右侧对话气泡）
     entry = {
         "aiPlayerId": speaker.id,
         "name": speaker.name,
@@ -952,6 +961,34 @@ def trigger_speech(
         message=AISpeechLog(**entry),
         audioClip=AudioClipInfo(**audio_meta),
     )
+
+
+
+def get_debug_info(game_id: str) -> DebugInfo:
+    """读取调试窗口数据：开启则返回 history + thinkRaw；关闭只返回 enabled=false。"""
+    game = _get_game_or_404(game_id)
+    if not game.debug_panel_enabled:
+        return DebugInfo(enabled=False, history=None, thinkRaw=None)
+    return DebugInfo(
+        enabled=True,
+        history=game.last_history_text or "",
+        thinkRaw=game.last_think_output or "",
+    )
+
+
+def set_debug_enabled(game_id: str, player_id: str, enabled: bool) -> DebugInfo:
+    """仅 Host 可切换调试面板开关。"""
+    game = _get_game_or_404(game_id)
+    host = _get_player(game, player_id)
+    if not host.is_host:
+        raise HTTPException(status_code=403, detail="Only the host can toggle debug window.")
+    game.debug_panel_enabled = bool(enabled)
+    # 如需关闭时清空缓存，可放开下面两行
+    # if not game.debug_panel_enabled:
+    #     game.last_history_text = None
+    #     game.last_think_output = None
+    return get_debug_info(game_id)
+
 # modify end
 
 def finish_round(game_id: str, player_id: str) -> GameStateResponse:
